@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "752602903515",
+    "project_id": "milo-ai-99f9f",
+    "storage_bucket": "milo-ai-99f9f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:752602903515:android:39be0454bfac8a66e4edfe",
+        "android_client_info": {
+          "package_name": "Milo.Ai"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAHckuebcAb7RK5QbGkxmXSWE191SotVp0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
