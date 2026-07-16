@@ -23,8 +23,8 @@ jobs:
         echo "--> Installing global gradle to generate wrapper..."
         sudo apt-get update && sudo apt-get install -y gradle
         
-        echo "--> Generating clean gradlew files..."
-        gradle wrapper --gradle-version 8.5
+        echo "--> Generating clean gradlew files with required version 9.3.1..."
+        gradle wrapper --gradle-version 9.3.1
         
         echo "--> Verifying new environment files..."
         ls -la
