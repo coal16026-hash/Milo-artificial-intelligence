@@ -26,14 +26,16 @@ jobs:
         echo "--> Generating clean gradlew files with required version 9.3.1..."
         gradle wrapper --gradle-version 9.3.1
 
-    - name: Disable Google Services & Compile App
+    - name: Clean Residual Code & Compile App
       run: |
         chmod +x gradlew
         
-        # 1. Strip out the google services plugins that break the build
+        # 1. Target and erase the specific lines breaking Kotlin build script compilation
+        find . -name "build.gradle.kts" -exec sed -i '/com.google.gms.googleservices/d' {} +
+        find . -name "build.gradle.kts" -exec sed -i '/googleServices {/d' {} +
+        find . -name "build.gradle.kts" -exec sed -i '/missingGoogleServicesStrategy/d' {} +
         find . -name "build.gradle.kts" -exec sed -i '/plugins.google.services/d' {} +
         find . -name "build.gradle.kts" -exec sed -i '/google-services/d' {} +
-        find . -name "build.gradle" -exec sed -i '/google-services/d' {} +
         
         # 2. Inject standard fallback debug signing to bypass validation errors
         if [ -f "app/build.gradle.kts" ]; then
