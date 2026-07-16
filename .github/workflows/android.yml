@@ -26,18 +26,23 @@ jobs:
         echo "--> Generating clean gradlew files with required version 9.3.1..."
         gradle wrapper --gradle-version 9.3.1
 
-    - name: Fix Permissions & Compile App
+    - name: Disable Google Services & Compile App
       run: |
         chmod +x gradlew
         
-        # Inject standard fallback debug signing to bypass validation errors
+        # 1. Strip out the google services plugins that break the build
+        find . -name "build.gradle.kts" -exec sed -i '/plugins.google.services/d' {} +
+        find . -name "build.gradle.kts" -exec sed -i '/google-services/d' {} +
+        find . -name "build.gradle" -exec sed -i '/google-services/d' {} +
+        
+        # 2. Inject standard fallback debug signing to bypass validation errors
         if [ -f "app/build.gradle.kts" ]; then
           sed -i '/buildTypes {/i \    signingConfigs { getByName("debug") { storeFile = file(System.getProperty("user.home") + "/.android/debug.keystore") } }' app/build.gradle.kts
         elif [ -f "app/build.gradle" ]; then
           sed -i '/buildTypes {/i \    signingConfigs { debug { storeFile file("~/.android/debug.keystore") } }' app/build.gradle
         fi
         
-        # Compile without non-blocking caching
+        # 3. Compile safely
         ./gradlew assembleDebug --no-daemon --no-configuration-cache
 
     - name: Upload APK Artifact
