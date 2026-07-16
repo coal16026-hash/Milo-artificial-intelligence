@@ -29,6 +29,24 @@ data class MessageEntity(
     val imageUri: String? = null
 )
 
+
+@Entity(tableName = "generated_images")
+data class GeneratedImageEntity(
+    @PrimaryKey val id: String,
+    val prompt: String,
+    val imageUrl: String,
+    val timestamp: Long
+)
+
+@Dao
+interface GeneratedImageDao {
+    @Query("SELECT * FROM generated_images ORDER BY timestamp DESC")
+    fun getAllGeneratedImages(): kotlinx.coroutines.flow.Flow<List<GeneratedImageEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertGeneratedImage(image: GeneratedImageEntity)
+}
+
 @Dao
 interface ChatDao {
     @Query("SELECT * FROM conversations ORDER BY isPinned DESC, timestamp DESC")
@@ -62,9 +80,10 @@ interface ChatDao {
     suspend fun clearAll()
 }
 
-@Database(entities = [ConversationEntity::class, MessageEntity::class], version = 6, exportSchema = false)
+@Database(entities = [ConversationEntity::class, MessageEntity::class, GeneratedImageEntity::class], version = 7, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun chatDao(): ChatDao
+    abstract fun generatedImageDao(): GeneratedImageDao
 
     companion object {
         @Volatile private var instance: AppDatabase? = null
@@ -107,11 +126,16 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("DROP TABLE IF EXISTS `user_preferences`")
             }
         }
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `generated_images` (`id` TEXT NOT NULL, `prompt` TEXT NOT NULL, `imageUrl` TEXT NOT NULL, `timestamp` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+            }
+        }
 
         fun getDatabase(context: android.content.Context): AppDatabase {
             return instance ?: synchronized(this) {
                 Room.databaseBuilder(context, AppDatabase::class.java, "chat_db")
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                     .fallbackToDestructiveMigration()
                     .build()
                     .also { instance = it }

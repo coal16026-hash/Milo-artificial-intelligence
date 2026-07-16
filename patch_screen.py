@@ -1,4 +1,5 @@
-package com.example.ui
+with open("app/src/main/java/com/example/ui/ImageGeneratorScreen.kt", "w") as f:
+    f.write("""package com.example.ui
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -369,3 +370,4 @@ fun ImageGeneratorScreen(
         }
     }
 }
+""")

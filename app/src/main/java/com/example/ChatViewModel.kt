@@ -17,6 +17,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
+import java.io.File
+import java.io.FileOutputStream
+import java.net.URL
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
@@ -213,12 +218,43 @@ data class Conversation(val id: String, val title: String, val messages: List<Me
 
 class ChatViewModel(private val context: Context) : ViewModel() {
 
-    fun generateImage(prompt: String, onResult: (String?) -> Unit) {
+    
+    private fun downloadAndSaveImage(imageUrl: String): String? {
+        try {
+            val url = URL(imageUrl)
+            val connection = url.openConnection()
+            connection.connect()
+            val inputStream = connection.getInputStream()
+            
+            val file = File(context.cacheDir, "img_${System.currentTimeMillis()}.png")
+            val outputStream = FileOutputStream(file)
+            
+            val buffer = ByteArray(4096)
+            var bytesRead: Int
+            while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                outputStream.write(buffer, 0, bytesRead)
+            }
+            outputStream.close()
+            inputStream.close()
+            
+            return file.absolutePath
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return null
+        }
+    }
+
+    fun generateImage(prompt: String, onResult: (String?, String?) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val json = org.json.JSONObject()
                 json.put("model", "agnes-image-2.1-flash")
                 json.put("prompt", prompt)
+                json.put("size", "1024x768")
+                
+                val extraBody = org.json.JSONObject()
+                extraBody.put("response_format", "url")
+                json.put("extra_body", extraBody)
                 
                 val requestBody = okhttp3.RequestBody.create(
                     "application/json".toMediaTypeOrNull(),
@@ -226,8 +262,8 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                 )
                 
                 val request = okhttp3.Request.Builder()
-                    .url("https://agnes-ai.com/v1/images/generations")
-                    .addHeader("Authorization", "Bearer skyATs9uzPnSZAPgSGHLkRNjQy1sCHxi96rSGi7NvizZ52Iuf1")
+                    .url("https://apihub.agnes-ai.com/v1/images/generations")
+                    .addHeader("Authorization", "Bearer ${com.example.BuildConfig.AGNES_API_KEY}")
                     .post(requestBody)
                     .build()
                     
@@ -244,18 +280,41 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                     val dataArray = responseObj.optJSONArray("data")
                     if (dataArray != null && dataArray.length() > 0) {
                         val imageUrl = dataArray.getJSONObject(0).optString("url")
-                        withContext(Dispatchers.Main) {
-                            onResult(imageUrl)
+                        if (imageUrl.isNotEmpty()) {
+                            val localUri = downloadAndSaveImage(imageUrl)
+                            val finalUrl = localUri ?: imageUrl
+                            
+                            val entity = GeneratedImageEntity(
+                                id = UUID.randomUUID().toString(),
+                                prompt = prompt,
+                                imageUrl = finalUrl,
+                                timestamp = System.currentTimeMillis()
+                            )
+                            imageDao.insertGeneratedImage(entity)
+                            
+                            withContext(Dispatchers.Main) {
+                                onResult(finalUrl, null)
+                            }
+                        } else {
+                            withContext(Dispatchers.Main) {
+                                onResult(null, "No image returned")
+                            }
                         }
                     } else {
-                        withContext(Dispatchers.Main) { onResult(null) }
+                        withContext(Dispatchers.Main) { 
+                            onResult(null, "No image returned") 
+                        }
                     }
                 } else {
-                    withContext(Dispatchers.Main) { onResult(null) }
+                    val errorMsg = responseBody ?: "Unknown error (HTTP ${response.code})"
+                    withContext(Dispatchers.Main) {
+                        onResult(null, "Error: $errorMsg")
+                    }
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
-                withContext(Dispatchers.Main) { onResult(null) }
+                withContext(Dispatchers.Main) {
+                    onResult(null, e.message ?: "Network error")
+                }
             }
         }
     }
@@ -269,6 +328,8 @@ class ChatViewModel(private val context: Context) : ViewModel() {
 
     private val db = AppDatabase.getDatabase(context)
     private val dao = db.chatDao()
+    private val imageDao = db.generatedImageDao()
+    val recentImages: kotlinx.coroutines.flow.StateFlow<List<GeneratedImageEntity>> = imageDao.getAllGeneratedImages().stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, emptyList())
     private val prefs = context.getSharedPreferences("milo_settings", Context.MODE_PRIVATE)
 
     private val _theme = MutableStateFlow(prefs.getString("theme", "Follow System") ?: "Follow System")
