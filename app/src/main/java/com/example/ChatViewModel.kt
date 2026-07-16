@@ -1,4 +1,7 @@
 package com.example
+
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+
 import kotlinx.coroutines.withContext
 import android.content.Context
 import android.content.SharedPreferences
@@ -209,6 +212,54 @@ data class ChatState(
 data class Conversation(val id: String, val title: String, val messages: List<Message>, val timestamp: Long, val isPinned: Boolean = false)
 
 class ChatViewModel(private val context: Context) : ViewModel() {
+
+    fun generateImage(prompt: String, onResult: (String?) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val json = org.json.JSONObject()
+                json.put("model", "agnes-image-2.1-flash")
+                json.put("prompt", prompt)
+                
+                val requestBody = okhttp3.RequestBody.create(
+                    "application/json".toMediaTypeOrNull(),
+                    json.toString()
+                )
+                
+                val request = okhttp3.Request.Builder()
+                    .url("https://agnes-ai.com/v1/images/generations")
+                    .addHeader("Authorization", "Bearer skyATs9uzPnSZAPgSGHLkRNjQy1sCHxi96rSGi7NvizZ52Iuf1")
+                    .post(requestBody)
+                    .build()
+                    
+                val client = okhttp3.OkHttpClient.Builder()
+                    .connectTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+                    .writeTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+                    .build()
+                val response = client.newCall(request).execute()
+                val responseBody = response.body?.string()
+                
+                if (response.isSuccessful && responseBody != null) {
+                    val responseObj = org.json.JSONObject(responseBody)
+                    val dataArray = responseObj.optJSONArray("data")
+                    if (dataArray != null && dataArray.length() > 0) {
+                        val imageUrl = dataArray.getJSONObject(0).optString("url")
+                        withContext(Dispatchers.Main) {
+                            onResult(imageUrl)
+                        }
+                    } else {
+                        withContext(Dispatchers.Main) { onResult(null) }
+                    }
+                } else {
+                    withContext(Dispatchers.Main) { onResult(null) }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                withContext(Dispatchers.Main) { onResult(null) }
+            }
+        }
+    }
+
     companion object {
         // NOTE: This is a client-side gate only, not a real security boundary.
         // It is purely for personal/local access control or prototyping and can be bypassed by editing local SharedPreferences or patching the APK.

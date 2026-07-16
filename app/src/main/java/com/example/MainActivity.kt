@@ -1,5 +1,8 @@
 package com.example
 
+import com.example.ui.ImageGeneratorScreen
+
+
 import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -224,6 +227,7 @@ fun ChatScreen() {
     val listState = rememberLazyListState()
     var showSettings by remember { mutableStateOf(false) }
     var showSignIn by remember { mutableStateOf(false) }
+    var showImageGenerator by remember { mutableStateOf(false) }
     var attachedImageUri by remember { mutableStateOf<Uri?>(null) }
 
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -312,6 +316,11 @@ fun ChatScreen() {
                     onSettingsClick = {
                         if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         showSettings = true
+                        scope.launch { drawerState.close() }
+                    },
+                    onImageGeneratorClick = {
+                        if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        showImageGenerator = true
                         scope.launch { drawerState.close() }
                     },
                     onLoadChat = { id ->
@@ -771,7 +780,7 @@ fun ChatScreen() {
 
         // Settings Screen with slide + fade transition
         AnimatedVisibility(
-            visible = showSettings && !showSignIn,
+            visible = showSettings && !showSignIn && !showImageGenerator,
             enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
             exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut(),
             modifier = Modifier.fillMaxSize()
@@ -782,6 +791,20 @@ fun ChatScreen() {
                 onBack = { showSettings = false },
                 onOpenSignIn = { showSignIn = true },
                 onClearAll = { viewModel.clearAllConversations() }
+            )
+        }
+        
+        // Image Generator Screen with slide + fade transition
+        AnimatedVisibility(
+            visible = showImageGenerator && !showSignIn,
+            enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
+            exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut(),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            ImageGeneratorScreen(
+                viewModel = viewModel,
+                colors = colors,
+                onBack = { showImageGenerator = false }
             )
         }
 
@@ -1887,6 +1910,7 @@ fun SidebarContent(
     viewModel: ChatViewModel,
     onNewChat: () -> Unit,
     onSettingsClick: () -> Unit,
+    onImageGeneratorClick: () -> Unit,
     onLoadChat: (String) -> Unit,
     onDeleteChat: (String) -> Unit,
     onRenameChat: (String, String) -> Unit,
@@ -2001,6 +2025,19 @@ fun SidebarContent(
                 Icon(Icons.Outlined.Add, contentDescription = "New chat", tint = colors.aiText, modifier = Modifier.size(24.dp))
                 Spacer(modifier = Modifier.width(16.dp))
                 Text("New chat", color = colors.aiText, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+            }
+            
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { onImageGeneratorClick() }
+                    .padding(vertical = 12.dp, horizontal = 8.dp)
+            ) {
+                Icon(Icons.Outlined.Image, contentDescription = "Generate Image", tint = colors.aiText, modifier = Modifier.size(24.dp))
+                Spacer(modifier = Modifier.width(16.dp))
+                Text("Generate Image", color = colors.aiText, fontSize = 16.sp, fontWeight = FontWeight.Medium)
             }
             
             Spacer(modifier = Modifier.height(24.dp))
