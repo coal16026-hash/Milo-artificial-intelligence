@@ -19,14 +19,25 @@ jobs:
         distribution: 'temurin'
         cache: gradle
 
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
-
-    - name: Build with Gradle
-      run: ./gradlew assembleDebug
+    - name: Find Project Root and Build
+      run: |
+        # Search for the directory containing gradlew
+        GRADLE_DIR=$(find . -name gradlew -exec dirname {} \+ | head -n 1)
+        
+        if [ -z "$GRADLE_DIR" ]; then
+          echo "ERROR: gradlew file could not be found anywhere in this repository!"
+          exit 1
+        fi
+        
+        echo "Found Android project root in: $GRADLE_DIR"
+        cd "$GRADLE_DIR"
+        
+        # Grant permissions and compile
+        chmod +x gradlew
+        ./gradlew assembleDebug
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
         name: app-debug-apk
-        path: app/build/outputs/apk/debug/app-debug.apk
+        path: "**/build/outputs/apk/debug/*-debug.apk"
