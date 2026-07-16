@@ -25,14 +25,19 @@ jobs:
         
         echo "--> Generating clean gradlew files with required version 9.3.1..."
         gradle wrapper --gradle-version 9.3.1
-        
-        echo "--> Verifying new environment files..."
-        ls -la
 
     - name: Fix Permissions & Compile App
       run: |
         chmod +x gradlew
-        # --no-daemon and --no-configuration-cache prevents the compiler engine from locking up
+        
+        # Inject standard fallback debug signing to bypass validation errors
+        if [ -f "app/build.gradle.kts" ]; then
+          sed -i '/buildTypes {/i \    signingConfigs { getByName("debug") { storeFile = file(System.getProperty("user.home") + "/.android/debug.keystore") } }' app/build.gradle.kts
+        elif [ -f "app/build.gradle" ]; then
+          sed -i '/buildTypes {/i \    signingConfigs { debug { storeFile file("~/.android/debug.keystore") } }' app/build.gradle
+        fi
+        
+        # Compile without non-blocking caching
         ./gradlew assembleDebug --no-daemon --no-configuration-cache
 
     - name: Upload APK Artifact
