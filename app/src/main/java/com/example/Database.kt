@@ -10,7 +10,8 @@ data class ConversationEntity(
     @PrimaryKey val id: String,
     val title: String,
     val timestamp: Long,
-    val isPinned: Boolean = false
+    val isPinned: Boolean = false,
+    val folderId: String? = null
 )
 
 @Entity(tableName = "messages", 
@@ -26,7 +27,11 @@ data class MessageEntity(
     val isUser: Boolean,
     val timestamp: Long,
     val thinking: String? = null,
-    val imageUri: String? = null
+    val imageUri: String? = null,
+    val parentMessageId: String? = null,
+    val branchIndex: Int = 0,
+    val promptTokens: Int? = null,
+    val completionTokens: Int? = null
 )
 
 
@@ -35,7 +40,17 @@ data class GeneratedImageEntity(
     @PrimaryKey val id: String,
     val prompt: String,
     val imageUrl: String,
-    val timestamp: Long
+    val timestamp: Long,
+    val style: String = "Default",
+    val size: String = "1024x1024"
+)
+
+@Entity(tableName = "folders")
+data class FolderEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val colorTag: String,
+    val createdAt: Long
 )
 
 @Dao
@@ -45,6 +60,9 @@ interface GeneratedImageDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertGeneratedImage(image: GeneratedImageEntity)
+
+    @Delete
+    suspend fun deleteGeneratedImage(image: GeneratedImageEntity)
 }
 
 @Dao
@@ -61,8 +79,8 @@ interface ChatDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertConversation(conversation: ConversationEntity)
 
-    @Insert
-    suspend fun insertMessage(message: MessageEntity)
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMessage(message: MessageEntity): Long
 
     @Query("UPDATE conversations SET title = :title, timestamp = :timestamp WHERE id = :id")
     suspend fun updateConversation(id: String, title: String, timestamp: Long)
@@ -73,14 +91,42 @@ interface ChatDao {
     @Query("UPDATE conversations SET isPinned = :isPinned WHERE id = :id")
     suspend fun updatePinned(id: String, isPinned: Boolean)
 
+    @Query("UPDATE conversations SET folderId = :folderId WHERE id = :id")
+    suspend fun updateConversationFolder(id: String, folderId: String?)
+
     @Query("DELETE FROM conversations WHERE id = :id")
     suspend fun deleteConversation(id: String)
 
     @Query("DELETE FROM conversations")
     suspend fun clearAll()
+
+    // Folder Dao methods
+    @Query("SELECT * FROM folders ORDER BY createdAt ASC")
+    fun getAllFolders(): Flow<List<FolderEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertFolder(folder: FolderEntity)
+
+    @Query("UPDATE folders SET name = :name WHERE id = :id")
+    suspend fun updateFolderName(id: String, name: String)
+
+    @Query("DELETE FROM folders WHERE id = :id")
+    suspend fun deleteFolder(id: String)
+
+    @Query("UPDATE conversations SET folderId = NULL WHERE folderId = :folderId")
+    suspend fun removeFolderFromConversations(folderId: String)
+
+    @Query("SELECT COUNT(*) FROM messages WHERE timestamp >= :since")
+    suspend fun getMessageCountSince(since: Long): Int
+
+    @Query("SELECT SUM(promptTokens) FROM messages WHERE timestamp >= :since")
+    suspend fun getTotalPromptTokensSince(since: Long): Int?
+
+    @Query("SELECT SUM(completionTokens) FROM messages WHERE timestamp >= :since")
+    suspend fun getTotalCompletionTokensSince(since: Long): Int?
 }
 
-@Database(entities = [ConversationEntity::class, MessageEntity::class, GeneratedImageEntity::class], version = 7, exportSchema = false)
+@Database(entities = [ConversationEntity::class, MessageEntity::class, GeneratedImageEntity::class, FolderEntity::class], version = 9, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun chatDao(): ChatDao
     abstract fun generatedImageDao(): GeneratedImageDao
@@ -131,11 +177,29 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE TABLE IF NOT EXISTS `generated_images` (`id` TEXT NOT NULL, `prompt` TEXT NOT NULL, `imageUrl` TEXT NOT NULL, `timestamp` INTEGER NOT NULL, PRIMARY KEY(`id`))")
             }
         }
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                safeAddColumn(db, "generated_images", "style", "TEXT NOT NULL DEFAULT 'Default'")
+                safeAddColumn(db, "generated_images", "size", "TEXT NOT NULL DEFAULT '1024x1024'")
+            }
+        }
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                safeAddColumn(db, "messages", "parentMessageId", "TEXT")
+                safeAddColumn(db, "messages", "branchIndex", "INTEGER NOT NULL DEFAULT 0")
+                safeAddColumn(db, "messages", "promptTokens", "INTEGER")
+                safeAddColumn(db, "messages", "completionTokens", "INTEGER")
+                
+                db.execSQL("CREATE TABLE IF NOT EXISTS `folders` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `colorTag` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+                
+                safeAddColumn(db, "conversations", "folderId", "TEXT")
+            }
+        }
 
         fun getDatabase(context: android.content.Context): AppDatabase {
             return instance ?: synchronized(this) {
                 Room.databaseBuilder(context, AppDatabase::class.java, "chat_db")
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
                     .fallbackToDestructiveMigration()
                     .build()
                     .also { instance = it }

@@ -1,6 +1,7 @@
 package com.example
 
 import com.example.ui.ImageGeneratorScreen
+import com.example.ui.MiloVideoScreen
 
 
 import android.app.Activity
@@ -49,6 +50,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -92,6 +94,7 @@ data class AppColors(
     val plusBg: Color,
     val borderGray: Color,
     val primary: Color,
+    val onPrimary: Color,
     val isDark: Boolean
 )
 
@@ -138,13 +141,14 @@ fun getAppColors(themeSetting: String): AppColors {
     val aiText = if (isDark) Color(0xFFFFFFFF) else Color(0xFF0A0A0A)
     
     val primary = if (isDark) Color(0xFFEDEDED) else Color(0xFF111111)
+    val onPrimary = if (isDark) Color(0xFF0A0A0A) else Color(0xFFFFFFFF)
     val inputBg = if (isDark) Color(0xFF212121) else Color(0xFFE5E5EA)
     val textGray = if (isDark) Color(0xFFB4B4B4) else Color(0xFF6B6B6B)
     val iconGray = if (isDark) Color(0xFF8E8E8E) else Color(0xFF71717A)
     val plusBg = if (isDark) Color(0xFF171717) else Color(0xFFD4D4D8)
     val borderGray = if (isDark) Color(0xFF2A2A2A) else Color(0xFFD1D5DB)
 
-    return AppColors(bg, inputBg, bubbleGray, userBubble, aiText, textGray, iconGray, plusBg, borderGray, primary, isDark)
+    return AppColors(bg, inputBg, bubbleGray, userBubble, aiText, textGray, iconGray, plusBg, borderGray, primary, onPrimary, isDark)
 }
 
 @Composable
@@ -205,7 +209,9 @@ fun ChatScreen() {
     var showSettings by remember { mutableStateOf(false) }
     var showSignIn by remember { mutableStateOf(false) }
     var showImageGenerator by remember { mutableStateOf(false) }
+    var showVideoGenerator by remember { mutableStateOf(false) }
     var attachedImageUri by remember { mutableStateOf<Uri?>(null) }
+    var showInlineGenerateDialog by remember { mutableStateOf(false) }
 
     val keyboardController = LocalSoftwareKeyboardController.current
 
@@ -300,6 +306,11 @@ fun ChatScreen() {
                         showImageGenerator = true
                         scope.launch { drawerState.close() }
                     },
+                    onVideoGeneratorClick = {
+                        if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        showVideoGenerator = true
+                        scope.launch { drawerState.close() }
+                    },
                     onLoadChat = { id ->
                         if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         viewModel.loadChat(id)
@@ -349,6 +360,7 @@ fun ChatScreen() {
                             var menuExpanded by remember { mutableStateOf(false) }
                             var showSearchDialog by remember { mutableStateOf(false) }
                             var showArtifactsDialog by remember { mutableStateOf(false) }
+                            var selectedArtifact by remember { mutableStateOf<Triple<String, Message, MessagePart>?>(null) }
                             var searchQuery by remember { mutableStateOf("") }
                             val context = LocalContext.current
 
@@ -516,55 +528,376 @@ fun ChatScreen() {
                             }
 
                             if (showArtifactsDialog) {
-                                val allParts = state.messages.flatMap { parseMessageParts(it.text) }
-                                val artifacts = allParts.filter { it is MessagePart.Code || it is MessagePart.Formula }
-                                androidx.compose.material3.AlertDialog(
+                                val artifacts = state.messages.flatMap { msg ->
+                                    parseMessageParts(msg.text)
+                                        .filter { it is MessagePart.Code || it is MessagePart.Formula }
+                                        .map { part -> Triple(msg.id, msg, part) }
+                                }
+
+                                ModalBottomSheet(
                                     onDismissRequest = { showArtifactsDialog = false },
+                                    sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
                                     containerColor = colors.plusBg,
-                                    modifier = Modifier.shadow(8.dp, shape = AlertDialogDefaults.shape),
-                                    title = { Text("Chat Artifacts (${artifacts.size})", color = colors.aiText) },
-                                    text = {
-                                        LazyColumn(modifier = Modifier.heightIn(max = 300.dp)) {
-                                            items(artifacts) { artifact ->
-                                                Box(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .padding(vertical = 4.dp)
-                                                        .clip(RoundedCornerShape(8.dp))
-                                                        .background(colors.bubbleGray)
-                                                        .padding(12.dp)
-                                                ) {
-                                                    when (artifact) {
-                                                        is MessagePart.Formula -> {
+                                    contentColor = colors.aiText,
+                                    tonalElevation = 8.dp,
+                                    dragHandle = { BottomSheetDefaults.DragHandle(color = colors.textGray) }
+                                ) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .fillMaxHeight(0.85f)
+                                            .padding(bottom = 16.dp)
+                                    ) {
+                                        // Header row
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 18.dp, vertical = 8.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "Chat Artifacts (${artifacts.size})",
+                                                style = androidx.compose.ui.text.TextStyle(
+                                                    color = colors.aiText,
+                                                    fontSize = 18.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            )
+                                            IconButton(onClick = { showArtifactsDialog = false }) {
+                                                Icon(
+                                                    imageVector = Icons.Outlined.Close,
+                                                    contentDescription = "Close gallery",
+                                                    tint = colors.aiText
+                                                )
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.height(8.dp))
+
+                                        if (artifacts.isEmpty()) {
+                                            // Empty state centered layout
+                                            Column(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .weight(1f),
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Outlined.Widgets,
+                                                    contentDescription = "No artifacts",
+                                                    tint = colors.textGray.copy(alpha = 0.3f),
+                                                    modifier = Modifier.size(72.dp)
+                                                )
+                                                Spacer(modifier = Modifier.height(16.dp))
+                                                Text(
+                                                    text = "No code or LaTeX formulas found in this chat.",
+                                                    color = colors.textGray,
+                                                    fontSize = 14.sp,
+                                                    fontWeight = FontWeight.Medium
+                                                )
+                                            }
+                                        } else {
+                                            // 2-Column Grid
+                                            LazyVerticalGrid(
+                                                columns = GridCells.Fixed(2),
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .weight(1f)
+                                                    .padding(horizontal = 16.dp),
+                                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                                                contentPadding = PaddingValues(bottom = 16.dp)
+                                            ) {
+                                                items(artifacts) { (msgId, message, part) ->
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .height(170.dp)
+                                                            .clip(RoundedCornerShape(16.dp))
+                                                            .background(colors.bubbleGray)
+                                                            .border(1.dp, colors.borderGray, RoundedCornerShape(16.dp))
+                                                            .clickable {
+                                                                if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                                selectedArtifact = Triple(msgId, message, part)
+                                                            }
+                                                            .padding(12.dp)
+                                                    ) {
+                                                        Column(modifier = Modifier.fillMaxSize()) {
+                                                            // Header Row: Type Icon & Badge
+                                                            Row(
+                                                                modifier = Modifier.fillMaxWidth(),
+                                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                                verticalAlignment = Alignment.CenterVertically
+                                                            ) {
+                                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                                    val typeIcon = if (part is MessagePart.Code) Icons.Outlined.Code else Icons.Outlined.Functions
+                                                                    val iconColor = if (part is MessagePart.Code) Color(0xFF8AB4F8) else Color(0xFF81C995)
+                                                                    Icon(
+                                                                        imageVector = typeIcon,
+                                                                        contentDescription = null,
+                                                                        tint = iconColor,
+                                                                        modifier = Modifier.size(16.dp)
+                                                                    )
+                                                                }
+                                                                
+                                                                val badgeText = if (part is MessagePart.Code) part.language.ifEmpty { "code" } else "latex"
+                                                                Box(
+                                                                    modifier = Modifier
+                                                                        .clip(RoundedCornerShape(4.dp))
+                                                                        .background(colors.inputBg)
+                                                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                                ) {
+                                                                    Text(
+                                                                        text = badgeText.lowercase(),
+                                                                        color = colors.textGray,
+                                                                        fontSize = 9.sp,
+                                                                        fontWeight = FontWeight.Bold,
+                                                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                                                                    )
+                                                                }
+                                                            }
+
+                                                            Spacer(modifier = Modifier.height(8.dp))
+
+                                                            // Preview Container with fade-out
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .fillMaxWidth()
+                                                                    .weight(1f)
+                                                                    .clip(RoundedCornerShape(8.dp))
+                                                                    .background(colors.inputBg)
+                                                                    .padding(6.dp)
+                                                            ) {
+                                                                when (part) {
+                                                                    is MessagePart.Code -> {
+                                                                        val previewLines = part.code.lines().take(5).joinToString("\n")
+                                                                        val highlighted = highlightCode(previewLines)
+                                                                        Text(
+                                                                            text = highlighted,
+                                                                            fontSize = 10.sp,
+                                                                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                                                            lineHeight = 13.sp,
+                                                                            color = colors.aiText,
+                                                                            maxLines = 5,
+                                                                            overflow = TextOverflow.Ellipsis,
+                                                                            modifier = Modifier.fillMaxSize()
+                                                                        )
+                                                                    }
+                                                                    is MessagePart.Formula -> {
+                                                                        val cleanFormula = part.formula
+                                                                            .removePrefix("\\[").removeSuffix("\\]")
+                                                                            .removePrefix("\\(").removeSuffix("\\)")
+                                                                            .trim()
+                                                                        val isDark = colors.isDark
+                                                                        val textColorHex = if (isDark) "#E8EAED" else "#1F1F1F"
+                                                                        val miniHtml = remember(cleanFormula, isDark) {
+                                                                            """
+                                                                            <!DOCTYPE html>
+                                                                            <html>
+                                                                            <head>
+                                                                                <meta charset="utf-8">
+                                                                                <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+                                                                                <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+                                                                                <style>
+                                                                                    body {
+                                                                                        background-color: transparent;
+                                                                                        color: $textColorHex;
+                                                                                        font-family: sans-serif;
+                                                                                        display: flex;
+                                                                                        justify-content: center;
+                                                                                        align-items: center;
+                                                                                        height: 100vh;
+                                                                                        margin: 0;
+                                                                                        padding: 0;
+                                                                                        overflow: hidden;
+                                                                                    }
+                                                                                    .formula-container {
+                                                                                        font-size: 0.9em;
+                                                                                        text-align: center;
+                                                                                    }
+                                                                                </style>
+                                                                            </head>
+                                                                            <body>
+                                                                                <div class="formula-container" id="math"></div>
+                                                                                <script>
+                                                                                    window.onload = function() {
+                                                                                        try {
+                                                                                            katex.render(String.raw`${cleanFormula.replace("\\", "\\\\")}`, document.getElementById("math"), {
+                                                                                                displayMode: true,
+                                                                                                throwOnError: false
+                                                                                            });
+                                                                                        } catch (e) {
+                                                                                            document.getElementById("math").innerText = `${cleanFormula}`;
+                                                                                        }
+                                                                                    };
+                                                                                </script>
+                                                                            </body>
+                                                                            </html>
+                                                                            """.trimIndent()
+                                                                        }
+                                                                        AndroidView(
+                                                                            factory = { ctx ->
+                                                                                android.webkit.WebView(ctx).apply {
+                                                                                    settings.javaScriptEnabled = true
+                                                                                    setBackgroundColor(0) // Transparent background
+                                                                                    isVerticalScrollBarEnabled = false
+                                                                                    isHorizontalScrollBarEnabled = false
+                                                                                    setOnTouchListener { _, _ -> true }
+                                                                                    loadDataWithBaseURL(null, miniHtml, "text/html", "UTF-8", null)
+                                                                                }
+                                                                            },
+                                                                            update = { webView ->
+                                                                                webView.loadDataWithBaseURL(null, miniHtml, "text/html", "UTF-8", null)
+                                                                            },
+                                                                            modifier = Modifier.fillMaxSize()
+                                                                        )
+                                                                    }
+                                                                    else -> {}
+                                                                }
+
+                                                                // Linear Gradient Overlay for beautiful fadeout
+                                                                Box(
+                                                                    modifier = Modifier
+                                                                        .fillMaxWidth()
+                                                                        .height(20.dp)
+                                                                        .align(Alignment.BottomCenter)
+                                                                        .background(
+                                                                            Brush.verticalGradient(
+                                                                                colors = listOf(Color.Transparent, colors.inputBg)
+                                                                            )
+                                                                        )
+                                                                )
+                                                            }
+
+                                                            Spacer(modifier = Modifier.height(6.dp))
+
+                                                            // Message Context Caption
+                                                            val messageWords = message.text.split("\\s+".toRegex()).filter { it.isNotBlank() }
+                                                            val firstFewWords = messageWords.take(3).joinToString(" ")
+                                                            val contextCaption = "from: $firstFewWords..."
                                                             Text(
-                                                                text = "Formula: ${artifact.formula}",
-                                                                color = Color(0xFF81C995),
-                                                                fontSize = 13.sp,
-                                                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                                                                text = contextCaption,
+                                                                color = colors.textGray,
+                                                                fontSize = 11.sp,
+                                                                maxLines = 1,
+                                                                overflow = TextOverflow.Ellipsis,
+                                                                fontWeight = FontWeight.Medium
                                                             )
                                                         }
-                                                        is MessagePart.Code -> {
-                                                            Text(
-                                                                text = "[${artifact.language}] ${artifact.code.take(80)}...",
-                                                                color = Color(0xFF8AB4F8),
-                                                                fontSize = 13.sp,
-                                                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-                                                            )
-                                                        }
-                                                        else -> {}
                                                     }
                                                 }
                                             }
-                                            if (artifacts.isEmpty()) {
-                                                item {
-                                                    Text("No code or LaTeX formulas found in this chat.", color = colors.textGray, fontSize = 14.sp)
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Detail View Dialog for Selected Artifact
+                            selectedArtifact?.let { (msgId, message, part) ->
+                                androidx.compose.material3.AlertDialog(
+                                    onDismissRequest = { selectedArtifact = null },
+                                    containerColor = colors.plusBg,
+                                    modifier = Modifier.shadow(8.dp, shape = AlertDialogDefaults.shape).fillMaxWidth(0.92f),
+                                    title = {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = if (part is MessagePart.Code) Icons.Outlined.Code else Icons.Outlined.Functions,
+                                                contentDescription = null,
+                                                tint = if (part is MessagePart.Code) Color(0xFF8AB4F8) else Color(0xFF81C995),
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                            Text(
+                                                text = if (part is MessagePart.Code) "Code Artifact" else "LaTeX Formula",
+                                                color = colors.aiText,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 18.sp
+                                            )
+                                        }
+                                    },
+                                    text = {
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .heightIn(max = 450.dp)
+                                                .verticalScroll(rememberScrollState()),
+                                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                                        ) {
+                                            when (part) {
+                                                is MessagePart.Code -> {
+                                                    CodeBlockCard(
+                                                        language = part.language,
+                                                        code = part.code,
+                                                        colors = colors
+                                                    )
                                                 }
+                                                is MessagePart.Formula -> {
+                                                    FormulaCard(
+                                                        formula = part.formula,
+                                                        colors = colors
+                                                    )
+                                                }
+                                                else -> {}
+                                            }
+
+                                            // Context Information
+                                            Column(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clip(RoundedCornerShape(12.dp))
+                                                    .background(colors.bubbleGray)
+                                                    .padding(12.dp)
+                                            ) {
+                                                Text(
+                                                    text = "Source Message Context",
+                                                    color = colors.textGray,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif
+                                                )
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                                Text(
+                                                    text = message.text.take(200) + (if (message.text.length > 200) "..." else ""),
+                                                    color = colors.aiText,
+                                                    fontSize = 13.sp,
+                                                    lineHeight = 18.sp
+                                                )
                                             }
                                         }
                                     },
                                     confirmButton = {
-                                        TextButton(onClick = { showArtifactsDialog = false }) {
-                                            Text("Close", color = colors.primary)
+                                        Button(
+                                            onClick = {
+                                                selectedArtifact = null
+                                                showArtifactsDialog = false
+                                                scope.launch {
+                                                    val reversedMessages = state.messages.reversed()
+                                                    val reversedIndex = reversedMessages.indexOfFirst { it.id == msgId }
+                                                    if (reversedIndex != -1) {
+                                                        val targetIndex = if (state.isGenerating) reversedIndex + 1 else reversedIndex
+                                                        listState.animateScrollToItem(targetIndex)
+                                                    }
+                                                }
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = colors.primary),
+                                            shape = RoundedCornerShape(12.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.ArrowDownward,
+                                                contentDescription = "Jump to Message",
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("Jump to message", fontSize = 13.sp)
+                                        }
+                                    },
+                                    dismissButton = {
+                                        TextButton(onClick = { selectedArtifact = null }) {
+                                            Text("Close", color = colors.aiText)
                                         }
                                     }
                                 )
@@ -621,6 +954,7 @@ fun ChatScreen() {
                             onDocumentClick = {
                                 documentPickerLauncher.launch("*/*")
                             },
+                            onGenerateImageClick = { showInlineGenerateDialog = true },
                             onModelSelected = { model, code -> viewModel.setSelectedModel(model, code) }
                         )
                     }
@@ -682,7 +1016,11 @@ fun ChatScreen() {
                         ) {
                             if (state.isGenerating) {
                                 item {
-                                    GeneratingIndicator(colors = colors)
+                                    GeneratingIndicator(
+                                        colors = colors,
+                                        agentStatus = state.agentStatus,
+                                        agentLogs = state.agentLogs
+                                    )
                                 }
                             }
 
@@ -721,6 +1059,10 @@ fun ChatScreen() {
                                     },
                                     onEditUserMessage = { text ->
                                         viewModel.editUserMessage(originalIndex, text)
+                                    },
+                                    allConversationMessages = state.allConversationMessages,
+                                    onSetBranch = { parentId, idx ->
+                                        viewModel.setBranch(parentId, idx)
                                     }
                                 )
                             }
@@ -755,9 +1097,73 @@ fun ChatScreen() {
             }
         }
 
+
+        if (showInlineGenerateDialog) {
+            var generatePrompt by remember { mutableStateOf("") }
+            var isGenerating by remember { mutableStateOf(false) }
+            var genError by remember { mutableStateOf<String?>(null) }
+            
+            AlertDialog(
+                onDismissRequest = { if (!isGenerating) showInlineGenerateDialog = false },
+                title = { Text("Generate Image", color = colors.aiText) },
+                text = {
+                    Column {
+                        OutlinedTextField(
+                            value = generatePrompt,
+                            onValueChange = { generatePrompt = it },
+                            placeholder = { Text("Describe the image...") },
+                            modifier = Modifier.fillMaxWidth().height(120.dp),
+                            textStyle = TextStyle(color = colors.aiText),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = colors.primary,
+                                unfocusedBorderColor = colors.borderGray,
+                                cursorColor = colors.primary
+                            ),
+                            enabled = !isGenerating
+                        )
+                        if (genError != null) {
+                            Text(genError ?: "", color = Color.Red, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            if (generatePrompt.isNotBlank() && !isGenerating) {
+                                isGenerating = true
+                                genError = null
+                                viewModel.generateImage(generatePrompt, "Default", "1024x1024", null) { resultUrl, error ->
+                                    isGenerating = false
+                                    if (error != null) {
+                                        genError = error
+                                    } else if (resultUrl != null) {
+                                        attachedImageUri = Uri.parse(resultUrl)
+                                        showInlineGenerateDialog = false
+                                    }
+                                }
+                            }
+                        },
+                        enabled = !isGenerating && generatePrompt.isNotBlank()
+                    ) {
+                        if (isGenerating) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = colors.primary, strokeWidth = 2.dp)
+                        } else {
+                            Text("Generate", color = colors.primary)
+                        }
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showInlineGenerateDialog = false }, enabled = !isGenerating) {
+                        Text("Cancel", color = colors.textGray)
+                    }
+                },
+                containerColor = colors.plusBg
+            )
+        }
+
         // Settings Screen with slide + fade transition
         AnimatedVisibility(
-            visible = showSettings && !showSignIn && !showImageGenerator,
+            visible = showSettings && !showSignIn && !showImageGenerator && !showVideoGenerator,
             enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
             exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut(),
             modifier = Modifier.fillMaxSize()
@@ -785,6 +1191,20 @@ fun ChatScreen() {
             )
         }
 
+        // Milo Video Generator Screen with slide + fade transition
+        AnimatedVisibility(
+            visible = showVideoGenerator && !showSignIn,
+            enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
+            exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut(),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            MiloVideoScreen(
+                viewModel = viewModel,
+                colors = colors,
+                onBack = { showVideoGenerator = false }
+            )
+        }
+
         // Sign In Screen with slide + fade transition
         AnimatedVisibility(
             visible = !isLoggedIn || showSignIn,
@@ -807,7 +1227,7 @@ fun ChatScreen() {
 }
 
 @Composable
-fun GeneratingIndicator(colors: AppColors) {
+fun GeneratingIndicator(colors: AppColors, agentStatus: String? = null, agentLogs: List<String> = emptyList()) {
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     
     val alpha1 by infiniteTransition.animateFloat(
@@ -842,14 +1262,74 @@ fun GeneratingIndicator(colors: AppColors) {
         label = "alpha3"
     )
 
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.Start,
-        verticalAlignment = Alignment.CenterVertically
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Box(
+        if (agentStatus != null) {
+            Row(
+                modifier = Modifier
+                    .border(1.dp, Color(0xFF2E2E2E), RoundedCornerShape(20.dp))
+                    .background(Color(0xFF161616), RoundedCornerShape(20.dp))
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .background(Color(0xFF81C995), CircleShape)
+                        .alpha(alpha1)
+                )
+                Text(
+                    text = agentStatus,
+                    color = Color(0xFF81C995),
+                    fontSize = 12.sp,
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                )
+            }
+        }
+
+        if (agentLogs.isNotEmpty()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth(0.95f)
+                    .border(1.dp, Color(0xFF2E2E2E), RoundedCornerShape(12.dp))
+                    .background(Color(0xFF0F0F0F), RoundedCornerShape(12.dp))
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Box(modifier = Modifier.size(8.dp).background(Color(0xFF81C995), CircleShape))
+                    Text(
+                        text = "AGENT EXECUTION LOGS",
+                        color = Color(0xFF81C995),
+                        fontSize = 10.sp,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                    )
+                }
+                
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    agentLogs.forEach { log ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(">", color = Color(0xFF6E6E6E), fontSize = 11.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                            Text(log, color = Color(0xFFD4D4D4), fontSize = 11.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                        }
+                    }
+                }
+            }
+        }
+
+        Row(
             modifier = Modifier
                 .clip(RoundedCornerShape(16.dp))
                 .background(colors.inputBg)
@@ -878,7 +1358,9 @@ fun MessageBubble(
     isError: Boolean = false,
     errorMessage: String? = null,
     onRetry: () -> Unit = {},
-    onEditUserMessage: (String) -> Unit = {}
+    onEditUserMessage: (String) -> Unit = {},
+    allConversationMessages: List<MessageEntity> = emptyList(),
+    onSetBranch: (parentMessageId: String?, index: Int) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
     var showMoreMenu by remember { mutableStateOf(false) }
@@ -894,23 +1376,31 @@ fun MessageBubble(
         enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn()
     ) {
         if (message.isUser) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 32.dp),
-                contentAlignment = Alignment.CenterEnd
+            val siblings = allConversationMessages.filter { it.parentMessageId == message.parentMessageId }
+            val siblingCount = siblings.size
+            val currentSiblingIndex = siblings.indexOfFirst { it.id.toString() == message.id }
+
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.End
             ) {
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(colors.userBubble)
-                        .combinedClickable(
-                            onClick = {},
-                            onLongClick = { showMoreMenu = true }
-                        )
-                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .fillMaxWidth()
+                        .padding(start = 32.dp),
+                    contentAlignment = Alignment.CenterEnd
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(colors.userBubble)
+                            .combinedClickable(
+                                onClick = {},
+                                onLongClick = { showMoreMenu = true }
+                            )
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (message.imageUri != null) {
                             coil.compose.AsyncImage(
                                 model = message.imageUri,
@@ -954,7 +1444,54 @@ fun MessageBubble(
                     }
                 }
             }
+                if (siblingCount > 1 && currentSiblingIndex >= 0) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.padding(top = 4.dp, bottom = 4.dp, end = 8.dp)
+                    ) {
+                        IconButton(
+                            onClick = {
+                                val prevIndex = (currentSiblingIndex - 1 + siblingCount) % siblingCount
+                                onSetBranch(message.parentMessageId, prevIndex)
+                            },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                imageVector = androidx.compose.material.icons.Icons.AutoMirrored.Outlined.KeyboardArrowLeft,
+                                contentDescription = "Previous branch",
+                                tint = colors.textGray,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                        Text(
+                            text = "${currentSiblingIndex + 1}/$siblingCount",
+                            color = colors.textGray,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        IconButton(
+                            onClick = {
+                                val nextIndex = (currentSiblingIndex + 1) % siblingCount
+                                onSetBranch(message.parentMessageId, nextIndex)
+                            },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                imageVector = androidx.compose.material.icons.Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                                contentDescription = "Next branch",
+                                tint = colors.textGray,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+            }
         } else {
+            val siblings = allConversationMessages.filter { it.parentMessageId == message.parentMessageId }
+            val siblingCount = siblings.size
+            val currentSiblingIndex = siblings.indexOfFirst { it.id.toString() == message.id }
+
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -988,6 +1525,21 @@ fun MessageBubble(
                             match?.groups?.get(1)?.value?.trim()
                         }
                     }
+                    val (finalThinking, agentLogsList) = remember(thinkingText) {
+                        if (thinkingText == null) {
+                            Pair(null, emptyList<String>())
+                        } else {
+                            val match = Regex("<agent_logs>(.*?)</agent_logs>", RegexOption.DOT_MATCHES_ALL).find(thinkingText)
+                            if (match != null) {
+                                val logsStr = match.groups[1]?.value?.trim() ?: ""
+                                val list = logsStr.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+                                val cleanThink = thinkingText.replace(match.value, "").trim()
+                                Pair(if (cleanThink.isEmpty()) null else cleanThink, list)
+                            } else {
+                                Pair(thinkingText, emptyList())
+                            }
+                        }
+                    }
                     val displayMarkdownText = remember(message.text, thinkingText) {
                         var t = message.text
                         if (message.thinking == null) {
@@ -1006,8 +1558,57 @@ fun MessageBubble(
                                 onLongClick = { showMoreMenu = true }
                             )
                     ) {
-                        if (!thinkingText.isNullOrEmpty()) {
-                            ThinkingBar(thinkingText = thinkingText, colors = colors)
+                        if (agentLogsList.isNotEmpty()) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 6.dp)
+                                    .border(1.dp, Color(0xFF2E2E2E), RoundedCornerShape(12.dp))
+                                    .background(Color(0xFF0F0F0F), RoundedCornerShape(12.dp))
+                                    .padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Box(modifier = Modifier.size(8.dp).background(Color(0xFF81C995), CircleShape))
+                                    Text(
+                                        text = "AGENT TRACE",
+                                        color = Color(0xFF81C995),
+                                        fontSize = 10.sp,
+                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    agentLogsList.forEach { log ->
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Text(">", color = Color(0xFF6E6E6E), fontSize = 11.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                                            Text(log, color = Color(0xFFD4D4D4), fontSize = 11.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        val cleanThinkingText = remember(finalThinking) {
+                            if (finalThinking != null) {
+                                val match = Regex("<think>(.*?)</think>", RegexOption.DOT_MATCHES_ALL).find(finalThinking)
+                                    ?: Regex("<thinking>(.*?)</thinking>", RegexOption.DOT_MATCHES_ALL).find(finalThinking)
+                                    ?: Regex("<thought>(.*?)</thought>", RegexOption.DOT_MATCHES_ALL).find(finalThinking)
+                                match?.groups?.get(1)?.value?.trim() ?: finalThinking
+                            } else {
+                                null
+                            }
+                        }
+
+                        if (!cleanThinkingText.isNullOrEmpty()) {
+                            ThinkingBar(thinkingText = cleanThinkingText, colors = colors)
                         }
                         val messageParts = remember(displayMarkdownText) {
                             parseMessageParts(displayMarkdownText)
@@ -1085,20 +1686,68 @@ fun MessageBubble(
                     
                     AnimatedVisibility(visible = !isError && message.text.isNotEmpty()) {
                         Row(
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            IconButton(onClick = { onCopy() }, modifier = Modifier.size(36.dp)) {
-                                Icon(Icons.Outlined.ContentCopy, contentDescription = "Copy text", tint = colors.iconGray, modifier = Modifier.size(18.dp))
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                IconButton(onClick = { onCopy() }, modifier = Modifier.size(36.dp)) {
+                                    Icon(Icons.Outlined.ContentCopy, contentDescription = "Copy text", tint = colors.iconGray, modifier = Modifier.size(18.dp))
+                                }
+                                IconButton(onClick = { liked = if (liked == true) null else true }, modifier = Modifier.size(36.dp)) {
+                                    Icon(Icons.Outlined.ThumbUp, contentDescription = "Thumbs up", tint = if (liked == true) colors.aiText else colors.iconGray, modifier = Modifier.size(18.dp))
+                                }
+                                IconButton(onClick = { liked = if (liked == false) null else false }, modifier = Modifier.size(36.dp)) {
+                                    Icon(Icons.Outlined.ThumbDown, contentDescription = "Thumbs down", tint = if (liked == false) colors.aiText else colors.iconGray, modifier = Modifier.size(18.dp))
+                                }
+                                IconButton(onClick = { onRegenerate() }, modifier = Modifier.size(36.dp)) {
+                                    Icon(Icons.Outlined.Refresh, contentDescription = "Regenerate response", tint = colors.iconGray, modifier = Modifier.size(18.dp))
+                                }
                             }
-                            IconButton(onClick = { liked = if (liked == true) null else true }, modifier = Modifier.size(36.dp)) {
-                                Icon(Icons.Outlined.ThumbUp, contentDescription = "Thumbs up", tint = if (liked == true) colors.aiText else colors.iconGray, modifier = Modifier.size(18.dp))
-                            }
-                            IconButton(onClick = { liked = if (liked == false) null else false }, modifier = Modifier.size(36.dp)) {
-                                Icon(Icons.Outlined.ThumbDown, contentDescription = "Thumbs down", tint = if (liked == false) colors.aiText else colors.iconGray, modifier = Modifier.size(18.dp))
-                            }
-                            IconButton(onClick = { onRegenerate() }, modifier = Modifier.size(36.dp)) {
-                                Icon(Icons.Outlined.Refresh, contentDescription = "Regenerate response", tint = colors.iconGray, modifier = Modifier.size(18.dp))
+
+                            if (siblingCount > 1 && currentSiblingIndex >= 0) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    IconButton(
+                                        onClick = {
+                                            val prevIndex = (currentSiblingIndex - 1 + siblingCount) % siblingCount
+                                            onSetBranch(message.parentMessageId, prevIndex)
+                                        },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = androidx.compose.material.icons.Icons.AutoMirrored.Outlined.KeyboardArrowLeft,
+                                            contentDescription = "Previous branch",
+                                            tint = colors.textGray,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                    Text(
+                                        text = "${currentSiblingIndex + 1}/$siblingCount",
+                                        color = colors.textGray,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    IconButton(
+                                        onClick = {
+                                            val nextIndex = (currentSiblingIndex + 1) % siblingCount
+                                            onSetBranch(message.parentMessageId, nextIndex)
+                                        },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = androidx.compose.material.icons.Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                                            contentDescription = "Next branch",
+                                            tint = colors.textGray,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -1681,6 +2330,7 @@ fun InputBar(
     onGalleryClick: () -> Unit,
     onCameraClick: () -> Unit,
     onDocumentClick: () -> Unit,
+    onGenerateImageClick: () -> Unit,
     onModelSelected: (String, String) -> Unit
 ) {
     var showAttachMenu by remember { mutableStateOf(false) }
@@ -1764,6 +2414,19 @@ fun InputBar(
                             onClick = {
                                 showAttachMenu = false
                                 onGalleryClick()
+                            },
+                            modifier = Modifier
+                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Generate image", color = colors.aiText, fontSize = 14.sp) },
+                            leadingIcon = {
+                                Icon(Icons.Outlined.AutoAwesome, contentDescription = null, tint = colors.aiText, modifier = Modifier.size(20.dp))
+                            },
+                            onClick = {
+                                showAttachMenu = false
+                                onGenerateImageClick()
                             },
                             modifier = Modifier
                                 .padding(horizontal = 4.dp, vertical = 2.dp)
@@ -1881,26 +2544,20 @@ fun InputBar(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun SidebarContent(
-    conversations: List<Conversation>,
+fun ConversationRowItem(
+    item: Conversation,
     colors: AppColors,
-    viewModel: ChatViewModel,
-    onNewChat: () -> Unit,
-    onSettingsClick: () -> Unit,
-    onImageGeneratorClick: () -> Unit,
     onLoadChat: (String) -> Unit,
-    onDeleteChat: (String) -> Unit,
+    onPinChat: (String, Boolean) -> Unit,
     onRenameChat: (String, String) -> Unit,
-    onPinChat: (String, Boolean) -> Unit
+    onDeleteChat: (String) -> Unit,
+    foldersList: List<FolderEntity> = emptyList(),
+    onMoveToFolder: (String, String?) -> Unit = { _, _ -> }
 ) {
-    val userName by viewModel.userName.collectAsState()
-    val userAvatar by viewModel.userAvatar.collectAsState()
-    val isLoggedIn by viewModel.isLoggedIn.collectAsState()
-
-    var searchQuery by remember { mutableStateOf("") }
-    var chatToDelete by remember { mutableStateOf<String?>(null) }
+    var showRowMenu by remember { mutableStateOf(false) }
     var chatToRename by remember { mutableStateOf<Conversation?>(null) }
     var newTitleInput by remember { mutableStateOf("") }
+    var chatToDelete by remember { mutableStateOf<String?>(null) }
 
     if (chatToDelete != null) {
         AlertDialog(
@@ -1955,6 +2612,163 @@ fun SidebarContent(
         )
     }
 
+    Box(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .clickable { onLoadChat(item.id) }
+                .padding(horizontal = 12.dp, vertical = 10.dp)
+        ) {
+            if (item.isPinned) {
+                Icon(Icons.Outlined.PushPin, contentDescription = "Pinned", tint = colors.textGray, modifier = Modifier.size(14.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+            }
+            Text(
+                text = item.title,
+                color = colors.aiText,
+                fontSize = 15.sp,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(colors.bubbleGray)
+                    .clickable { showRowMenu = true },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.MoreVert,
+                    contentDescription = "Chat options",
+                    tint = colors.aiText,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
+
+        DropdownMenu(
+            expanded = showRowMenu,
+            onDismissRequest = { showRowMenu = false },
+            modifier = Modifier.background(colors.inputBg),
+            offset = androidx.compose.ui.unit.DpOffset(x = 180.dp, y = 0.dp)
+        ) {
+            DropdownMenuItem(
+                text = { Text(if (item.isPinned) "Unpin" else "Pin", color = colors.aiText) },
+                onClick = {
+                    onPinChat(item.id, item.isPinned)
+                    showRowMenu = false
+                }
+            )
+            DropdownMenuItem(
+                text = { Text("Rename", color = colors.aiText) },
+                onClick = {
+                    newTitleInput = item.title
+                    chatToRename = item
+                    showRowMenu = false
+                }
+            )
+            
+            // Move to Folder options
+            if (foldersList.isNotEmpty()) {
+                foldersList.forEach { folder ->
+                    if (item.folderId != folder.id) {
+                        DropdownMenuItem(
+                            text = { Text("Move to: ${folder.name}", color = colors.aiText) },
+                            onClick = {
+                                onMoveToFolder(item.id, folder.id)
+                                showRowMenu = false
+                            },
+                            leadingIcon = { Icon(Icons.Outlined.Folder, contentDescription = null, tint = colors.iconGray, modifier = Modifier.size(16.dp)) }
+                        )
+                    }
+                }
+                if (item.folderId != null) {
+                    DropdownMenuItem(
+                        text = { Text("Remove from Folder", color = Color(0xFFFF6B6B)) },
+                        onClick = {
+                            onMoveToFolder(item.id, null)
+                            showRowMenu = false
+                        },
+                        leadingIcon = { Icon(Icons.Outlined.FolderDelete, contentDescription = null, tint = Color(0xFFFF6B6B), modifier = Modifier.size(16.dp)) }
+                    )
+                }
+            }
+
+            DropdownMenuItem(
+                text = { Text("Delete", color = Color(0xFFFF6B6B)) },
+                onClick = {
+                    chatToDelete = item.id
+                    showRowMenu = false
+                }
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun SidebarContent(
+    conversations: List<Conversation>,
+    colors: AppColors,
+    viewModel: ChatViewModel,
+    onNewChat: () -> Unit,
+    onSettingsClick: () -> Unit,
+    onImageGeneratorClick: () -> Unit,
+    onLoadChat: (String) -> Unit,
+    onDeleteChat: (String) -> Unit,
+    onRenameChat: (String, String) -> Unit,
+    onPinChat: (String, Boolean) -> Unit,
+    onVideoGeneratorClick: () -> Unit
+) {
+    val userName by viewModel.userName.collectAsState()
+    val userAvatar by viewModel.userAvatar.collectAsState()
+    val isLoggedIn by viewModel.isLoggedIn.collectAsState()
+    val foldersList by viewModel.folders.collectAsState()
+
+    var searchQuery by remember { mutableStateOf("") }
+    val expandedFolders = remember { mutableStateMapOf<String, Boolean>() }
+    var folderToCreate by remember { mutableStateOf(false) }
+    var newFolderName by remember { mutableStateOf("") }
+
+    if (folderToCreate) {
+        AlertDialog(
+            onDismissRequest = { folderToCreate = false },
+            title = { Text("Create Folder", color = colors.aiText) },
+            text = {
+                OutlinedTextField(
+                    value = newFolderName,
+                    onValueChange = { newFolderName = it },
+                    singleLine = true,
+                    placeholder = { Text("Folder Name", color = colors.textGray) },
+                    textStyle = TextStyle(color = colors.aiText)
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (newFolderName.isNotBlank()) {
+                        viewModel.createFolder(newFolderName)
+                    }
+                    newFolderName = ""
+                    folderToCreate = false
+                }) {
+                    Text("Create", color = colors.aiText)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { folderToCreate = false }) {
+                    Text("Cancel", color = colors.aiText)
+                }
+            },
+            containerColor = colors.bubbleGray
+        )
+    }
+
     ModalDrawerSheet(
         drawerContainerColor = colors.background,
         modifier = Modifier.width(300.dp)
@@ -1980,7 +2794,7 @@ fun SidebarContent(
                         cursorBrush = SolidColor(colors.aiText),
                         decorationBox = { innerTextField ->
                             if (searchQuery.isEmpty()) {
-                                Text("Search", color = colors.textGray, fontSize = 16.sp)
+                                  Text("Search", color = colors.textGray, fontSize = 16.sp)
                             }
                             innerTextField()
                         },
@@ -2016,17 +2830,49 @@ fun SidebarContent(
                 Spacer(modifier = Modifier.width(16.dp))
                 Text("Generate Image", color = colors.aiText, fontSize = 16.sp, fontWeight = FontWeight.Medium)
             }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { onVideoGeneratorClick() }
+                    .padding(vertical = 12.dp, horizontal = 8.dp)
+            ) {
+                Icon(Icons.Outlined.Videocam, contentDescription = "Milo-Video-1", tint = colors.aiText, modifier = Modifier.size(24.dp))
+                Spacer(modifier = Modifier.width(16.dp))
+                Text("Milo-Video-1", color = colors.aiText, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+            }
             
             Spacer(modifier = Modifier.height(24.dp))
             
-            Text("Recents", color = colors.textGray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Recents & Folders", color = colors.textGray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                IconButton(
+                    onClick = { folderToCreate = true },
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.CreateNewFolder,
+                        contentDescription = "Create Folder",
+                        tint = colors.aiText,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
             Spacer(modifier = Modifier.height(12.dp))
             
             LazyColumn(
                 modifier = Modifier.weight(1f)
             ) {
                 val filtered = conversations.filter { it.title.contains(searchQuery, ignoreCase = true) }
-                if (filtered.isEmpty()) {
+                val filteredFolders = foldersList.filter { it.name.contains(searchQuery, ignoreCase = true) }
+
+                if (filtered.isEmpty() && filteredFolders.isEmpty()) {
                     item {
                         Text(
                             text = if (conversations.isEmpty()) "No conversations yet" else "No results for '$searchQuery'",
@@ -2036,78 +2882,153 @@ fun SidebarContent(
                         )
                     }
                 } else {
-                    items(filtered, key = { it.id }) { item ->
-                        var showRowMenu by remember { mutableStateOf(false) }
-                        Box(modifier = Modifier.fillMaxWidth()) {
+                    // Render Folders
+                    items(filteredFolders, key = { "folder_${it.id}" }) { folder ->
+                        val isExpanded = expandedFolders[folder.id] ?: false
+                        val folderChats = filtered.filter { it.folderId == folder.id }
+                        var showFolderMenu by remember { mutableStateOf(false) }
+                        var folderToRename by remember { mutableStateOf<FolderEntity?>(null) }
+                        var renameInput by remember { mutableStateOf("") }
+
+                        if (folderToRename != null) {
+                            AlertDialog(
+                                onDismissRequest = { folderToRename = null },
+                                title = { Text("Rename Folder", color = colors.aiText) },
+                                text = {
+                                    OutlinedTextField(
+                                        value = renameInput,
+                                        onValueChange = { renameInput = it },
+                                        singleLine = true,
+                                        textStyle = TextStyle(color = colors.aiText)
+                                    )
+                                },
+                                confirmButton = {
+                                    TextButton(onClick = {
+                                        if (renameInput.isNotBlank()) {
+                                            viewModel.renameFolder(folderToRename!!.id, renameInput)
+                                        }
+                                        folderToRename = null
+                                    }) {
+                                        Text("Save", color = colors.aiText)
+                                    }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { folderToRename = null }) {
+                                        Text("Cancel", color = colors.aiText)
+                                    }
+                                },
+                                containerColor = colors.bubbleGray
+                            )
+                        }
+
+                        Column(modifier = Modifier.fillMaxWidth()) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(vertical = 4.dp)
-                                    .clip(RoundedCornerShape(16.dp))
-                                    .clickable { onLoadChat(item.id) }
-                                    .padding(horizontal = 12.dp, vertical = 10.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(colors.bubbleGray.copy(alpha = 0.3f))
+                                    .clickable {
+                                        expandedFolders[folder.id] = !isExpanded
+                                    }
+                                    .padding(horizontal = 8.dp, vertical = 8.dp)
                             ) {
-                                if (item.isPinned) {
-                                    Icon(Icons.Outlined.PushPin, contentDescription = "Pinned", tint = colors.textGray, modifier = Modifier.size(14.dp))
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                }
-                                Text(
-                                    text = item.title,
-                                    color = colors.aiText,
-                                    fontSize = 15.sp,
-                                    modifier = Modifier.weight(1f),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                Icon(
+                                    imageVector = if (isExpanded) Icons.Outlined.FolderOpen else Icons.Outlined.Folder,
+                                    contentDescription = "Folder",
+                                    tint = colors.aiText,
+                                    modifier = Modifier.size(20.dp)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .size(32.dp)
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .background(colors.bubbleGray)
-                                        .clickable { showRowMenu = true },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.MoreVert,
-                                        contentDescription = "Chat options",
-                                        tint = colors.aiText,
-                                        modifier = Modifier.size(16.dp)
-                                    )
+                                Text(
+                                    text = folder.name,
+                                    color = colors.aiText,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Box {
+                                    IconButton(
+                                        onClick = { showFolderMenu = true },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.MoreVert,
+                                            contentDescription = "Folder options",
+                                            tint = colors.aiText,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                    DropdownMenu(
+                                        expanded = showFolderMenu,
+                                        onDismissRequest = { showFolderMenu = false },
+                                        modifier = Modifier.background(colors.inputBg)
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text("Rename", color = colors.aiText) },
+                                            onClick = {
+                                                renameInput = folder.name
+                                                folderToRename = folder
+                                                showFolderMenu = false
+                                            }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Delete Folder", color = Color(0xFFFF6B6B)) },
+                                            onClick = {
+                                                viewModel.deleteFolder(folder.id)
+                                                showFolderMenu = false
+                                            }
+                                        )
+                                    }
                                 }
                             }
 
-                            DropdownMenu(
-                                expanded = showRowMenu,
-                                onDismissRequest = { showRowMenu = false },
-                                modifier = Modifier.background(colors.inputBg),
-                                offset = androidx.compose.ui.unit.DpOffset(x = 180.dp, y = 0.dp)
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text(if (item.isPinned) "Unpin" else "Pin", color = colors.aiText) },
-                                    onClick = {
-                                        onPinChat(item.id, item.isPinned)
-                                        showRowMenu = false
+                            if (isExpanded) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 16.dp)
+                                ) {
+                                    if (folderChats.isEmpty()) {
+                                        Text(
+                                            text = "Empty folder (move chats here via chat options)",
+                                            color = colors.textGray,
+                                            fontSize = 12.sp,
+                                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp)
+                                        )
+                                    } else {
+                                        folderChats.forEach { item ->
+                                            ConversationRowItem(
+                                                item = item,
+                                                colors = colors,
+                                                onLoadChat = onLoadChat,
+                                                onPinChat = onPinChat,
+                                                onRenameChat = onRenameChat,
+                                                onDeleteChat = onDeleteChat,
+                                                foldersList = foldersList,
+                                                onMoveToFolder = { cId, fId -> viewModel.moveConversationToFolder(cId, fId) }
+                                            )
+                                        }
                                     }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Rename", color = colors.aiText) },
-                                    onClick = {
-                                        newTitleInput = item.title
-                                        chatToRename = item
-                                        showRowMenu = false
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Delete", color = Color(0xFFFF6B6B)) },
-                                    onClick = {
-                                        chatToDelete = item.id
-                                        showRowMenu = false
-                                    }
-                                )
+                                }
                             }
                         }
+                    }
+
+                    // Render Uncategorized Chats
+                    val uncategorizedChats = filtered.filter { it.folderId == null }
+                    items(uncategorizedChats, key = { it.id }) { item ->
+                        ConversationRowItem(
+                            item = item,
+                            colors = colors,
+                            onLoadChat = onLoadChat,
+                            onPinChat = onPinChat,
+                            onRenameChat = onRenameChat,
+                            onDeleteChat = onDeleteChat,
+                            foldersList = foldersList,
+                            onMoveToFolder = { cId, fId -> viewModel.moveConversationToFolder(cId, fId) }
+                        )
                     }
                 }
             }
@@ -2174,6 +3095,14 @@ fun SettingsScreen(
     val userPhone by viewModel.userPhone.collectAsState()
     val authMethod by viewModel.authMethod.collectAsState()
 
+    val customInstructionsAboutMe by viewModel.customInstructionsAboutMe.collectAsState()
+    val customInstructionsHowRespond by viewModel.customInstructionsHowRespond.collectAsState()
+    val isCustomEnabledGlobally by viewModel.customInstructionsEnabledGlobally.collectAsState()
+    val selectedTone by viewModel.selectedTone.collectAsState()
+    val msgCountThisMonth by viewModel.messageCountThisMonth.collectAsState()
+    val tokenCountThisMonth by viewModel.tokenCountThisMonth.collectAsState()
+    val scope = rememberCoroutineScope()
+
     var showNameDialog by remember { mutableStateOf(false) }
     var showAvatarDialog by remember { mutableStateOf(false) }
     var tempName by remember { mutableStateOf(userName) }
@@ -2198,6 +3127,35 @@ fun SettingsScreen(
             } catch (e: Exception) {
                 e.printStackTrace()
                 Toast.makeText(context, "Failed to update profile picture", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            scope.launch {
+                try {
+                    val inputStream = context.contentResolver.openInputStream(uri)
+                    val json = inputStream?.bufferedReader()?.use { it.readText() }
+                    if (!json.isNullOrBlank()) {
+                        val moshi = com.squareup.moshi.Moshi.Builder()
+                            .add(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory())
+                            .build()
+                        val adapter = moshi.adapter(BackupPayload::class.java)
+                        val payload = adapter.fromJson(json)
+                        if (payload != null) {
+                            viewModel.restoreBackup(payload)
+                            Toast.makeText(context, "Backup restored successfully!", Toast.LENGTH_LONG).show()
+                        } else {
+                            Toast.makeText(context, "Invalid backup format", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    Toast.makeText(context, "Import failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }
@@ -2545,6 +3503,205 @@ fun SettingsScreen(
                             }
                         }
                     )
+                }
+            }
+
+            // --- SECTION: CUSTOM INSTRUCTIONS ---
+            SettingsSectionCard(title = "Custom Instructions", colors = colors) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Enable Custom Instructions", color = colors.aiText, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                            Text("Tailor AI answers globally", color = colors.textGray, fontSize = 12.sp)
+                        }
+                        Switch(
+                            checked = isCustomEnabledGlobally,
+                            onCheckedChange = {
+                                viewModel.setCustomInstructionsEnabledGlobally(it)
+                            }
+                        )
+                    }
+
+                    if (isCustomEnabledGlobally) {
+                        OutlinedTextField(
+                            value = customInstructionsAboutMe,
+                            onValueChange = { viewModel.setCustomInstructions(it, customInstructionsHowRespond) },
+                            label = { Text("What you should know about me", color = colors.textGray) },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = colors.aiText,
+                                unfocusedTextColor = colors.aiText,
+                                focusedBorderColor = colors.aiText,
+                                unfocusedBorderColor = colors.borderGray,
+                                focusedLabelColor = colors.aiText,
+                                unfocusedLabelColor = colors.textGray
+                            ),
+                            placeholder = { Text("e.g., Where you live, what you do, your goals...", color = colors.textGray.copy(alpha = 0.5f)) },
+                            modifier = Modifier.fillMaxWidth(),
+                            minLines = 3,
+                            maxLines = 5
+                        )
+
+                        OutlinedTextField(
+                            value = customInstructionsHowRespond,
+                            onValueChange = { viewModel.setCustomInstructions(customInstructionsAboutMe, it) },
+                            label = { Text("How you would like Milo to respond", color = colors.textGray) },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = colors.aiText,
+                                unfocusedTextColor = colors.aiText,
+                                focusedBorderColor = colors.aiText,
+                                unfocusedBorderColor = colors.borderGray,
+                                focusedLabelColor = colors.aiText,
+                                unfocusedLabelColor = colors.textGray
+                            ),
+                            placeholder = { Text("e.g., Formal, casual, detailed, brief, bullet-points...", color = colors.textGray.copy(alpha = 0.5f)) },
+                            modifier = Modifier.fillMaxWidth(),
+                            minLines = 3,
+                            maxLines = 5
+                        )
+                    }
+                }
+            }
+
+            // --- SECTION: RESPONSE TONE ---
+            SettingsSectionCard(title = "Response Tone", colors = colors) {
+                Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
+                    Text(
+                        text = "Current Tone: $selectedTone",
+                        color = colors.aiText,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    
+                    val tonesList = listOf("Balanced", "Concise", "Detailed", "Casual", "Formal")
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(tonesList) { tone ->
+                            val isSelected = selectedTone == tone
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(if (isSelected) colors.aiText else colors.inputBg)
+                                    .border(1.dp, if (isSelected) Color.Transparent else colors.borderGray, RoundedCornerShape(16.dp))
+                                    .clickable {
+                                        viewModel.setTone(tone)
+                                    }
+                                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                            ) {
+                                Text(
+                                    text = tone,
+                                    color = if (isSelected) colors.background else colors.aiText,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // --- SECTION: USAGE STATISTICS ---
+            SettingsSectionCard(title = "Monthly Usage & Billing", colors = colors) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val estimatedCost = (tokenCountThisMonth.toFloat() / 1_000_000f) * 2.50f
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Messages sent (this month)", color = colors.textGray, fontSize = 14.sp)
+                        Text("$msgCountThisMonth", color = colors.aiText, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Tokens consumed (this month)", color = colors.textGray, fontSize = 14.sp)
+                        Text(String.format("%,d", tokenCountThisMonth), color = colors.aiText, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
+                    
+                    HorizontalDivider(color = colors.borderGray.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 4.dp))
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("Estimated Monthly Bill", color = colors.aiText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Blended rate of $2.50 / 1M tokens", color = colors.textGray, fontSize = 11.sp)
+                        }
+                        Text(
+                            text = String.format("$%.4f", estimatedCost),
+                            color = Color(0xFF4CAF50),
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+
+            // --- SECTION: BACKUP & RESTORE ---
+            SettingsSectionCard(title = "Backup & Restore", colors = colors) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                if (hapticFeedback) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                scope.launch {
+                                    try {
+                                        val json = viewModel.getFullBackupJson()
+                                        val sendIntent = Intent().apply {
+                                            action = Intent.ACTION_SEND
+                                            putExtra(Intent.EXTRA_TEXT, json)
+                                            type = "application/json"
+                                        }
+                                        val shareIntent = Intent.createChooser(sendIntent, "Export Backup")
+                                        context.startActivity(shareIntent)
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Export failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }
+                            .padding(vertical = 12.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Outlined.CloudUpload, contentDescription = null, tint = colors.aiText, modifier = Modifier.size(24.dp))
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text("Export Backup (JSON)", color = colors.aiText, fontSize = 16.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                        Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = colors.iconGray)
+                    }
+
+                    HorizontalDivider(color = colors.borderGray.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 4.dp))
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                if (hapticFeedback) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                importLauncher.launch("application/json")
+                            }
+                            .padding(vertical = 12.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Outlined.CloudDownload, contentDescription = null, tint = colors.aiText, modifier = Modifier.size(24.dp))
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text("Import Backup (JSON)", color = colors.aiText, fontSize = 16.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                        Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = colors.iconGray)
+                    }
                 }
             }
 

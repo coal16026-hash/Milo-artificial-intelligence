@@ -1,4 +1,5 @@
-package com.example.ui
+with open("app/src/main/java/com/example/ui/ImageGeneratorScreen.kt", "w") as f:
+    f.write("""package com.example.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -29,7 +30,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -40,31 +40,6 @@ import coil.compose.AsyncImage
 import com.example.AppColors
 import com.example.ChatViewModel
 import com.example.ImageStyles
-import com.example.GeneratedImageEntity
-import android.app.DownloadManager
-import android.content.Context
-import android.os.Environment
-import android.net.Uri
-import android.widget.Toast
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
-import android.content.Intent
-
-private fun saveImageToDownloads(context: Context, url: String, prompt: String) {
-    try {
-        val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        val request = DownloadManager.Request(Uri.parse(url))
-            .setTitle("Milo Generated Image")
-            .setDescription(if (prompt.length > 50) prompt.take(50) + "..." else prompt)
-            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "milo_${System.currentTimeMillis()}.jpg")
-        downloadManager.enqueue(request)
-        Toast.makeText(context, "Downloading image to Downloads folder...", Toast.LENGTH_SHORT).show()
-    } catch (e: Exception) {
-        Toast.makeText(context, "Failed to download image: ${e.message}", Toast.LENGTH_LONG).show()
-    }
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -78,10 +53,6 @@ fun ImageGeneratorScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isGenerating by remember { mutableStateOf(false) }
     var showHistoryDialog by remember { mutableStateOf(false) }
-    var selectedHistoryImage by remember { mutableStateOf<GeneratedImageEntity?>(null) }
-    
-    val context = LocalContext.current
-    val clipboardManager = LocalClipboardManager.current
     
     var generationMode by remember { mutableStateOf("Generate") }
     var sourceImageUri by remember { mutableStateOf<String?>(null) }
@@ -103,283 +74,40 @@ fun ImageGeneratorScreen(
     if (showHistoryDialog) {
         AlertDialog(
             onDismissRequest = { showHistoryDialog = false },
-            title = { Text("All Generations", color = colors.aiText, fontWeight = FontWeight.Bold) },
+            title = { Text("All Generations", color = colors.aiText) },
             text = {
                 LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
-                    modifier = Modifier.heightIn(max = 450.dp),
+                    columns = GridCells.Fixed(3),
+                    modifier = Modifier.heightIn(max = 400.dp),
                     contentPadding = PaddingValues(4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(recentImages) { img ->
-                        Box(
+                        AsyncImage(
+                            model = img.imageUrl,
+                            contentDescription = "History image",
+                            contentScale = ContentScale.Crop,
                             modifier = Modifier
                                 .aspectRatio(1f)
-                                .clip(RoundedCornerShape(12.dp))
+                                .clip(RoundedCornerShape(8.dp))
                                 .background(colors.inputBg)
-                                .border(1.dp, if (imageUrl == img.imageUrl) colors.primary else colors.borderGray, RoundedCornerShape(12.dp))
+                                .border(1.dp, if (imageUrl == img.imageUrl) colors.primary else colors.borderGray, RoundedCornerShape(8.dp))
                                 .clickable {
-                                    selectedHistoryImage = img
+                                    imageUrl = img.imageUrl
+                                    prompt = img.prompt
+                                    selectedStyle = img.style
+                                    selectedSize = img.size
+                                    errorMessage = null
                                     showHistoryDialog = false
                                 }
-                        ) {
-                            AsyncImage(
-                                model = img.imageUrl,
-                                contentDescription = "History image",
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .align(Alignment.BottomCenter)
-                                    .background(Brush.verticalGradient(
-                                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f))
-                                    ))
-                                    .padding(horizontal = 8.dp, vertical = 6.dp)
-                            ) {
-                                Text(
-                                    text = img.prompt,
-                                    color = Color.White,
-                                    fontSize = 10.sp,
-                                    maxLines = 1,
-                                    fontWeight = FontWeight.Medium,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            }
-                        }
+                        )
                     }
                 }
             },
             confirmButton = {
                 TextButton(onClick = { showHistoryDialog = false }) {
                     Text("Close", color = colors.primary)
-                }
-            },
-            containerColor = colors.plusBg
-        )
-    }
-
-    // Detail dialog for viewing, saving, sharing, and copying a history image
-    if (selectedHistoryImage != null) {
-        val img = selectedHistoryImage!!
-        val formattedTime = remember(img.timestamp) {
-            try {
-                val sdf = java.text.SimpleDateFormat("MMM dd, yyyy - hh:mm a", java.util.Locale.getDefault())
-                sdf.format(java.util.Date(img.timestamp))
-            } catch (e: Exception) {
-                "Unknown Date"
-            }
-        }
-        AlertDialog(
-            onDismissRequest = { selectedHistoryImage = null },
-            title = {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Generation Details", color = colors.aiText, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                    IconButton(onClick = { selectedHistoryImage = null }) {
-                        Icon(Icons.Outlined.Close, contentDescription = "Close", tint = colors.aiText)
-                    }
-                }
-            },
-            text = {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState()),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(if (img.size == "1024x768") 4f/3f else if (img.size == "768x1024") 3f/4f else 1f)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(colors.inputBg)
-                            .border(1.dp, colors.borderGray, RoundedCornerShape(12.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        AsyncImage(
-                            model = img.imageUrl,
-                            contentDescription = "History Image",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
-                    
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        SuggestionChip(
-                            onClick = {},
-                            label = { Text("Style: ${img.style}", color = colors.aiText, fontSize = 11.sp) },
-                            colors = SuggestionChipDefaults.suggestionChipColors(containerColor = colors.inputBg)
-                        )
-                        SuggestionChip(
-                            onClick = {},
-                            label = { Text("Size: ${img.size}", color = colors.aiText, fontSize = 11.sp) },
-                            colors = SuggestionChipDefaults.suggestionChipColors(containerColor = colors.inputBg)
-                        )
-                    }
-                    
-                    Spacer(modifier = Modifier.height(8.dp))
-                    
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Start,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Outlined.AccessTime,
-                            contentDescription = "Time",
-                            tint = colors.textGray,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Generated on $formattedTime",
-                            color = colors.textGray,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                    
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    Text("PROMPT", color = colors.textGray, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth())
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(colors.inputBg)
-                            .border(1.dp, colors.borderGray, RoundedCornerShape(8.dp))
-                            .padding(12.dp)
-                    ) {
-                        Column {
-                            Text(img.prompt, color = colors.aiText, fontSize = 14.sp)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.End
-                            ) {
-                                TextButton(
-                                    onClick = {
-                                        clipboardManager.setText(AnnotatedString(img.prompt))
-                                        Toast.makeText(context, "Prompt copied to clipboard!", Toast.LENGTH_SHORT).show()
-                                    },
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                    modifier = Modifier.height(32.dp)
-                                ) {
-                                    Icon(Icons.Outlined.ContentCopy, contentDescription = null, tint = colors.primary, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Copy", color = colors.primary, fontSize = 12.sp)
-                                }
-                            }
-                        }
-                    }
-                    
-                    Spacer(modifier = Modifier.height(20.dp))
-                    
-                    Button(
-                        onClick = {
-                            prompt = img.prompt
-                            selectedStyle = img.style
-                            selectedSize = img.size
-                            imageUrl = img.imageUrl
-                            selectedHistoryImage = null
-                            Toast.makeText(context, "Loaded into generator", Toast.LENGTH_SHORT).show()
-                        },
-                        modifier = Modifier.fillMaxWidth().height(44.dp),
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = colors.primary)
-                    ) {
-                        Icon(Icons.Outlined.Edit, contentDescription = null, tint = colors.onPrimary, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Reuse Settings", color = colors.onPrimary, fontSize = 14.sp)
-                    }
-                    
-                    Spacer(modifier = Modifier.height(8.dp))
-                    
-                    Button(
-                        onClick = {
-                            sourceImageUri = img.imageUrl
-                            generationMode = "Edit"
-                            selectedHistoryImage = null
-                            Toast.makeText(context, "Set as Base Image for Editing", Toast.LENGTH_SHORT).show()
-                        },
-                        modifier = Modifier.fillMaxWidth().height(44.dp),
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = colors.inputBg)
-                    ) {
-                        Icon(Icons.Outlined.AddPhotoAlternate, contentDescription = null, tint = colors.aiText, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Use as Base for Edit", color = colors.aiText, fontSize = 14.sp)
-                    }
-                    
-                    Spacer(modifier = Modifier.height(8.dp))
-                    
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = {
-                                saveImageToDownloads(context, img.imageUrl, img.prompt)
-                            },
-                            modifier = Modifier.weight(1f).height(44.dp),
-                            shape = RoundedCornerShape(8.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.borderGray),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.aiText)
-                        ) {
-                            Icon(Icons.Outlined.SaveAlt, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Save", fontSize = 14.sp)
-                        }
-                        
-                        OutlinedButton(
-                            onClick = {
-                                val intent = Intent(Intent.ACTION_SEND).apply {
-                                    type = "text/plain"
-                                    putExtra(Intent.EXTRA_SUBJECT, "Milo Generated Image")
-                                    putExtra(Intent.EXTRA_TEXT, "Check out this image: ${img.imageUrl}")
-                                }
-                                context.startActivity(Intent.createChooser(intent, "Share Image URL"))
-                            },
-                            modifier = Modifier.weight(1f).height(44.dp),
-                            shape = RoundedCornerShape(8.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.borderGray),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.aiText)
-                        ) {
-                            Icon(Icons.Outlined.Share, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Share", fontSize = 14.sp)
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.deleteGeneratedImage(img)
-                        selectedHistoryImage = null
-                        Toast.makeText(context, "Deleted from history", Toast.LENGTH_SHORT).show()
-                    }
-                ) {
-                    Icon(Icons.Outlined.Delete, contentDescription = "Delete", tint = Color(0xFFE53935), modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Delete", color = Color(0xFFE53935))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { selectedHistoryImage = null }) {
-                    Text("Close", color = colors.textGray)
                 }
             },
             containerColor = colors.plusBg
@@ -707,23 +435,10 @@ fun ImageGeneratorScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)
                 ) {
-                    IconButton(onClick = {
-                        imageUrl?.let { url ->
-                            saveImageToDownloads(context, url, prompt)
-                        }
-                    }) {
+                    IconButton(onClick = {}) {
                         Icon(Icons.Outlined.SaveAlt, contentDescription = "Save", tint = colors.iconGray)
                     }
-                    IconButton(onClick = {
-                        imageUrl?.let { url ->
-                            val intent = Intent(Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                putExtra(Intent.EXTRA_SUBJECT, "Milo Generated Image")
-                                putExtra(Intent.EXTRA_TEXT, "Check out this image generated with Milo AI: $url")
-                            }
-                            context.startActivity(Intent.createChooser(intent, "Share Image Link"))
-                        }
-                    }) {
+                    IconButton(onClick = {}) {
                         Icon(Icons.Outlined.Share, contentDescription = "Share", tint = colors.iconGray)
                     }
                     IconButton(onClick = {
@@ -762,74 +477,26 @@ fun ImageGeneratorScreen(
                 }
                 LazyRow(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(recentImages.take(8)) { img ->
-                        Box(
+                    items(recentImages.take(5)) { img ->
+                        AsyncImage(
+                            model = img.imageUrl,
+                            contentDescription = "Recent image",
+                            contentScale = ContentScale.Crop,
                             modifier = Modifier
-                                .width(160.dp)
-                                .height(160.dp)
-                                .clip(RoundedCornerShape(14.dp))
+                                .size(80.dp)
+                                .clip(RoundedCornerShape(8.dp))
                                 .background(colors.inputBg)
-                                .border(1.5.dp, if (imageUrl == img.imageUrl) colors.primary else colors.borderGray, RoundedCornerShape(14.dp))
+                                .border(1.dp, if (imageUrl == img.imageUrl) colors.primary else colors.borderGray, RoundedCornerShape(8.dp))
                                 .clickable {
-                                    selectedHistoryImage = img
+                                    imageUrl = img.imageUrl
+                                    prompt = img.prompt
+                                    selectedStyle = img.style
+                                    selectedSize = img.size
+                                    errorMessage = null
                                 }
-                        ) {
-                            AsyncImage(
-                                model = img.imageUrl,
-                                contentDescription = "Recent image",
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                            
-                            // Top action buttons overlay
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .align(Alignment.TopCenter)
-                                    .padding(8.dp),
-                                horizontalArrangement = Arrangement.End
-                            ) {
-                                // Save/Download button
-                                Box(
-                                    modifier = Modifier
-                                        .size(28.dp)
-                                        .background(Color.Black.copy(alpha = 0.65f), CircleShape)
-                                        .clickable {
-                                            saveImageToDownloads(context, img.imageUrl, img.prompt)
-                                        },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        Icons.Outlined.SaveAlt,
-                                        contentDescription = "Save",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                }
-                            }
-
-                            // Bottom prompt overlay
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .align(Alignment.BottomCenter)
-                                    .background(Brush.verticalGradient(
-                                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))
-                                    ))
-                                    .padding(horizontal = 10.dp, vertical = 8.dp)
-                            ) {
-                                Text(
-                                    text = img.prompt,
-                                    color = Color.White,
-                                    fontSize = 11.sp,
-                                    maxLines = 1,
-                                    fontWeight = FontWeight.Medium,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            }
-                        }
+                        )
                     }
                 }
             }
@@ -838,3 +505,4 @@ fun ImageGeneratorScreen(
         }
     }
 }
+""")

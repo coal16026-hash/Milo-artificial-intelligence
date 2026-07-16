@@ -102,13 +102,28 @@ object RetrofitClient {
 // --- CrowLLM API ---
 
 @JsonClass(generateAdapter = true)
+data class OpenRouterToolCallFunction(
+    val name: String,
+    val arguments: String
+)
+
+@JsonClass(generateAdapter = true)
+data class OpenRouterToolCall(
+    val id: String,
+    val type: String,
+    val function: OpenRouterToolCallFunction
+)
+
+@JsonClass(generateAdapter = true)
 data class OpenRouterResponseMessage(
     val role: String,
-    val content: String?,
+    val content: String? = null,
     @com.squareup.moshi.Json(name = "reasoning")
     val reasoning: String? = null,
     @com.squareup.moshi.Json(name = "reasoning_content")
-    val reasoningContent: String? = null
+    val reasoningContent: String? = null,
+    @com.squareup.moshi.Json(name = "tool_calls")
+    val tool_calls: List<OpenRouterToolCall>? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -127,7 +142,39 @@ data class ImageUrl(
 @JsonClass(generateAdapter = true)
 data class OpenRouterRequestMessage(
     val role: String,
-    val content: Any
+    val content: Any?,
+    val name: String? = null,
+    @com.squareup.moshi.Json(name = "tool_call_id")
+    val tool_call_id: String? = null,
+    @com.squareup.moshi.Json(name = "tool_calls")
+    val tool_calls: List<OpenRouterToolCall>? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class OpenRouterProperty(
+    val type: String,
+    val description: String? = null,
+    val enum: List<String>? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class OpenRouterParameters(
+    val type: String = "object",
+    val properties: Map<String, OpenRouterProperty>?,
+    val required: List<String>? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class OpenRouterFunction(
+    val name: String,
+    val description: String,
+    val parameters: OpenRouterParameters? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class OpenRouterTool(
+    val type: String = "function",
+    val function: OpenRouterFunction
 )
 
 @JsonClass(generateAdapter = true)
@@ -135,12 +182,22 @@ data class OpenRouterRequest(
     val model: String,
     val messages: List<OpenRouterRequestMessage>,
     @com.squareup.moshi.Json(name = "reasoning_effort")
-    val reasoningEffort: String? = null
+    val reasoningEffort: String? = null,
+    val tools: List<OpenRouterTool>? = null,
+    @com.squareup.moshi.Json(name = "tool_choice")
+    val tool_choice: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class OpenRouterUsage(
+    @com.squareup.moshi.Json(name = "prompt_tokens") val promptTokens: Int? = null,
+    @com.squareup.moshi.Json(name = "completion_tokens") val completionTokens: Int? = null
 )
 
 @JsonClass(generateAdapter = true)
 data class OpenRouterResponse(
-    val choices: List<OpenRouterChoice>?
+    val choices: List<OpenRouterChoice>?,
+    val usage: OpenRouterUsage? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -168,7 +225,7 @@ object OpenRouterClient {
         .writeTimeout(60, TimeUnit.SECONDS)
         .addInterceptor { chain ->
             val apiKey = when {
-                BuildConfig.crowllmapikey.isNotBlank() && !BuildConfig.crowllmapikey.contains("MY_CROWLLM_API_KEY") -> BuildConfig.crowllmapikey
+                BuildConfig.CROWLLM_API_KEY.isNotBlank() && !BuildConfig.CROWLLM_API_KEY.contains("MY_CROWLLM_API_KEY") -> BuildConfig.CROWLLM_API_KEY
                 BuildConfig.CROWLLM_API_KEY.isNotBlank() && !BuildConfig.CROWLLM_API_KEY.contains("MY_CROWLLM_API_KEY") -> BuildConfig.CROWLLM_API_KEY
                 else -> "sk-aLgmFNww1yVavYccaXd3pyXzyfm5YegqpPxDxbFvavhyR5Xf"
             }
@@ -202,23 +259,135 @@ data class Message(
     val isUser: Boolean,
     val thinking: String? = null,
     val imageUri: String? = null,
-    val id: String = java.util.UUID.randomUUID().toString()
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val parentMessageId: String? = null,
+    val branchIndex: Int = 0,
+    val promptTokens: Int? = null,
+    val completionTokens: Int? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class HttpLogEntry(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val timestamp: Long = System.currentTimeMillis(),
+    val stage: String,
+    val content: String
 )
 
 data class ChatState(
     val messages: List<Message> = emptyList(),
+    val allConversationMessages: List<MessageEntity> = emptyList(),
     val isGenerating: Boolean = false,
     val inputText: String = "",
     val errorMessage: String? = null,
-    val suggestions: List<String> = listOf("Help me study vocabulary", "Write a thank-you note", "Brainstorm team building activities", "Explain quantum computing")
+    val suggestions: List<String> = listOf("Help me study vocabulary", "Write a thank-you note", "Brainstorm team building activities", "Explain quantum computing"),
+    val agentStatus: String? = null,
+    val agentLogs: List<String> = emptyList()
 )
 
+@JsonClass(generateAdapter = true)
+data class BackupPayload(
+    val folders: List<FolderEntity>,
+    val conversations: List<ConversationEntity>,
+    val messages: List<MessageEntity>
+)
 
-data class Conversation(val id: String, val title: String, val messages: List<Message>, val timestamp: Long, val isPinned: Boolean = false)
+data class Conversation(
+    val id: String,
+    val title: String,
+    val messages: List<Message>,
+    val timestamp: Long,
+    val isPinned: Boolean = false,
+    val folderId: String? = null
+)
 
 class ChatViewModel(private val context: Context) : ViewModel() {
 
-    
+    private val _httpLogs = MutableStateFlow<List<HttpLogEntry>>(emptyList())
+    val httpLogs: StateFlow<List<HttpLogEntry>> = _httpLogs.asStateFlow()
+
+    fun addHttpLog(stage: String, content: String) {
+        _httpLogs.value = _httpLogs.value + HttpLogEntry(stage = stage, content = content)
+    }
+
+    fun clearHttpLogs() {
+        _httpLogs.value = emptyList()
+    }
+
+    private val toolDeclarations = listOf(
+        OpenRouterTool(type = "function", function = OpenRouterFunction(name = "search_wikipedia", description = "Search the live internet/Wikipedia for current events, facts, history, or general knowledge.", parameters = OpenRouterParameters(properties = mapOf("query" to OpenRouterProperty(type = "string", description = "The search query.")), required = listOf("query")))),
+        OpenRouterTool(type = "function", function = OpenRouterFunction(name = "get_crypto_price", description = "Get the live price of Bitcoin (BTC) in USD.")),
+        OpenRouterTool(type = "function", function = OpenRouterFunction(name = "generate_qr_code", description = "Generate a dynamic QR code for any given link, text, or data string.", parameters = OpenRouterParameters(properties = mapOf("data" to OpenRouterProperty(type = "string", description = "The content or URL to encode into the QR code."), "size" to OpenRouterProperty(type = "string", description = "Dimensions of the generated PNG, e.g. '250x250'.")), required = listOf("data")))),
+        OpenRouterTool(type = "function", function = OpenRouterFunction(name = "lookup_dictionary_word", description = "Retrieve definitions, phonetics, audio pronunciation files, and synonyms for English words.", parameters = OpenRouterParameters(properties = mapOf("word" to OpenRouterProperty(type = "string", description = "The English word to look up.")), required = listOf("word")))),
+        OpenRouterTool(type = "function", function = OpenRouterFunction(name = "convert_currency", description = "Convert a specific monetary amount from one standard global currency to another.", parameters = OpenRouterParameters(properties = mapOf("amount" to OpenRouterProperty(type = "number", description = "The value to convert."), "from" to OpenRouterProperty(type = "string", description = "The source 3-letter currency code, e.g., USD."), "to" to OpenRouterProperty(type = "string", description = "The destination 3-letter currency code, e.g., EUR.")), required = listOf("amount", "from", "to"))))
+    )
+
+    private suspend fun executeToolCall(toolName: String, toolArgs: String): String {
+        return try {
+            val jsonArgs = org.json.JSONObject(toolArgs)
+            when (toolName) {
+                "search_wikipedia" -> {
+                    val query = jsonArgs.getString("query")
+                    val url = "https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${java.net.URLEncoder.encode(query, "UTF-8")}&format=json&origin=*"
+                    val client = okhttp3.OkHttpClient()
+                    val request = okhttp3.Request.Builder().url(url).build()
+                    val response = client.newCall(request).execute()
+                    response.body?.string() ?: "{}"
+                }
+                "get_crypto_price" -> {
+                    val url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
+                    val client = okhttp3.OkHttpClient()
+                    val request = okhttp3.Request.Builder().url(url).build()
+                    val response = client.newCall(request).execute()
+                    response.body?.string() ?: "{}"
+                }
+                "generate_qr_code" -> {
+                    val data = jsonArgs.getString("data")
+                    val size = jsonArgs.optString("size", "250x250")
+                    val qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=$size&data=${java.net.URLEncoder.encode(data, "UTF-8")}"
+                    "{\"qr_code_url\": \"$qrUrl\", \"note\": \"Render this as an image tag in the response.\"}"
+                }
+                "lookup_dictionary_word" -> {
+                    val word = jsonArgs.getString("word")
+                    val url = "https://api.dictionaryapi.dev/api/v2/entries/en/${java.net.URLEncoder.encode(word, "UTF-8")}"
+                    val client = okhttp3.OkHttpClient()
+                    val request = okhttp3.Request.Builder().url(url).build()
+                    val response = client.newCall(request).execute()
+                    response.body?.string() ?: "{}"
+                }
+                "convert_currency" -> {
+                    val amount = jsonArgs.getDouble("amount")
+                    val from = jsonArgs.getString("from")
+                    val to = jsonArgs.getString("to")
+                    val url = "https://api.frankfurter.app/latest?amount=$amount&from=$from&to=$to"
+                    val client = okhttp3.OkHttpClient()
+                    val request = okhttp3.Request.Builder().url(url).build()
+                    val response = client.newCall(request).execute()
+                    response.body?.string() ?: "{}"
+                }
+                else -> "{\"error\": \"Tool not found: $toolName\"}"
+            }
+        } catch (e: Exception) {
+            "{\"error\": \"Execution failed: ${e.message}\"}"
+        }
+    }
+
+    private fun getBase64FromUri(uriString: String): String? {
+        if (uriString.startsWith("http")) return null
+        return try {
+            val uri = android.net.Uri.parse(uriString)
+            val inputStream = context.contentResolver.openInputStream(uri)
+            val bytes = inputStream?.readBytes()
+            inputStream?.close()
+            if (bytes != null) {
+                android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+            } else null
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
     private fun downloadAndSaveImage(imageUrl: String): String? {
         try {
             val url = URL(imageUrl)
@@ -244,16 +413,25 @@ class ChatViewModel(private val context: Context) : ViewModel() {
         }
     }
 
-    fun generateImage(prompt: String, onResult: (String?, String?) -> Unit) {
+    fun generateImage(prompt: String, style: String = "Default", size: String = "1024x1024", sourceImageUri: String? = null, onResult: (String?, String?) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                val finalPrompt = prompt + (ImageStyles.styleSuffixMap[style] ?: "")
                 val json = org.json.JSONObject()
                 json.put("model", "agnes-image-2.1-flash")
-                json.put("prompt", prompt)
-                json.put("size", "1024x768")
+                json.put("prompt", finalPrompt)
+                json.put("size", size)
                 
                 val extraBody = org.json.JSONObject()
                 extraBody.put("response_format", "url")
+                if (sourceImageUri != null) {
+                    val base64 = getBase64FromUri(sourceImageUri)
+                    if (base64 != null) {
+                        extraBody.put("image", org.json.JSONArray().put("data:image/jpeg;base64,$base64"))
+                    } else if (sourceImageUri.startsWith("http")) {
+                        extraBody.put("image", org.json.JSONArray().put(sourceImageUri))
+                    }
+                }
                 json.put("extra_body", extraBody)
                 
                 val requestBody = okhttp3.RequestBody.create(
@@ -288,7 +466,9 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                                 id = UUID.randomUUID().toString(),
                                 prompt = prompt,
                                 imageUrl = finalUrl,
-                                timestamp = System.currentTimeMillis()
+                                timestamp = System.currentTimeMillis(),
+                                style = style,
+                                size = size
                             )
                             imageDao.insertGeneratedImage(entity)
                             
@@ -330,6 +510,13 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     private val dao = db.chatDao()
     private val imageDao = db.generatedImageDao()
     val recentImages: kotlinx.coroutines.flow.StateFlow<List<GeneratedImageEntity>> = imageDao.getAllGeneratedImages().stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, emptyList())
+
+    fun deleteGeneratedImage(image: GeneratedImageEntity) {
+        viewModelScope.launch(Dispatchers.IO) {
+            imageDao.deleteGeneratedImage(image)
+        }
+    }
+
     private val prefs = context.getSharedPreferences("milo_settings", Context.MODE_PRIVATE)
 
     private val _theme = MutableStateFlow(prefs.getString("theme", "Follow System") ?: "Follow System")
@@ -535,6 +722,123 @@ class ChatViewModel(private val context: Context) : ViewModel() {
 
     private var currentChatId: String? = null
 
+    // Folder states & management
+    private val _folders = MutableStateFlow<List<FolderEntity>>(emptyList())
+    val folders: StateFlow<List<FolderEntity>> = _folders.asStateFlow()
+
+    // Custom Instructions states
+    private val _customInstructionsAboutMe = MutableStateFlow(prefs.getString("custom_instructions_about_me", "") ?: "")
+    val customInstructionsAboutMe: StateFlow<String> = _customInstructionsAboutMe.asStateFlow()
+
+    private val _customInstructionsHowRespond = MutableStateFlow(prefs.getString("custom_instructions_how_respond", "") ?: "")
+    val customInstructionsHowRespond: StateFlow<String> = _customInstructionsHowRespond.asStateFlow()
+
+    private val _customInstructionsEnabledGlobally = MutableStateFlow(prefs.getBoolean("custom_instructions_enabled_globally", true))
+    val customInstructionsEnabledGlobally: StateFlow<Boolean> = _customInstructionsEnabledGlobally.asStateFlow()
+
+    private val _selectedTone = MutableStateFlow(prefs.getString("selected_tone", "Balanced") ?: "Balanced")
+    val selectedTone: StateFlow<String> = _selectedTone.asStateFlow()
+
+    // Usage Statistics
+    private val _messageCountThisMonth = MutableStateFlow(0)
+    val messageCountThisMonth: StateFlow<Int> = _messageCountThisMonth.asStateFlow()
+
+    private val _tokenCountThisMonth = MutableStateFlow(0)
+    val tokenCountThisMonth: StateFlow<Int> = _tokenCountThisMonth.asStateFlow()
+
+    // Active branches mapping: parentMessageId -> activeBranchIndex
+    val activeBranches = androidx.compose.runtime.mutableStateOf<Map<String?, Int>>(emptyMap())
+
+    fun updateCustomInstructions(aboutMe: String, howRespond: String) {
+        _customInstructionsAboutMe.value = aboutMe
+        _customInstructionsHowRespond.value = howRespond
+        prefs.edit()
+            .putString("custom_instructions_about_me", aboutMe)
+            .putString("custom_instructions_how_respond", howRespond)
+            .apply()
+    }
+
+    fun setCustomInstructions(aboutMe: String, howRespond: String) {
+        updateCustomInstructions(aboutMe, howRespond)
+    }
+
+    fun setCustomInstructionsEnabledGlobally(enabled: Boolean) {
+        _customInstructionsEnabledGlobally.value = enabled
+        prefs.edit().putBoolean("custom_instructions_enabled_globally", enabled).apply()
+    }
+
+    fun setSelectedTone(tone: String) {
+        _selectedTone.value = tone
+        prefs.edit().putString("selected_tone", tone).apply()
+    }
+
+    fun setTone(tone: String) {
+        setSelectedTone(tone)
+    }
+
+    fun isCustomInstructionsEnabledForChat(chatId: String): Boolean {
+        return prefs.getBoolean("custom_instructions_enabled_$chatId", true)
+    }
+
+    fun setCustomInstructionsEnabledForChat(chatId: String, enabled: Boolean) {
+        prefs.edit().putBoolean("custom_instructions_enabled_$chatId", enabled).apply()
+    }
+
+    fun createFolder(name: String, colorTag: String = "#7B1FA2") {
+        viewModelScope.launch(Dispatchers.IO) {
+            val folder = FolderEntity(
+                id = java.util.UUID.randomUUID().toString(),
+                name = name,
+                colorTag = colorTag,
+                createdAt = System.currentTimeMillis()
+            )
+            dao.insertFolder(folder)
+        }
+    }
+
+    fun deleteFolder(folderId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val folder = _folders.value.find { it.id == folderId }
+            if (folder != null) {
+                dao.removeFolderFromConversations(folderId)
+                dao.deleteFolder(folderId)
+            }
+        }
+    }
+
+    fun moveConversationToFolder(conversationId: String, folderId: String?) {
+        viewModelScope.launch(Dispatchers.IO) {
+            dao.updateConversationFolder(conversationId, folderId)
+        }
+    }
+
+    fun renameFolder(folderId: String, name: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            dao.updateFolderName(folderId, name)
+        }
+    }
+
+    fun loadUsageStats() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val calendar = java.util.Calendar.getInstance()
+            calendar.set(java.util.Calendar.DAY_OF_MONTH, 1)
+            calendar.set(java.util.Calendar.HOUR_OF_DAY, 0)
+            calendar.set(java.util.Calendar.MINUTE, 0)
+            calendar.set(java.util.Calendar.SECOND, 0)
+            calendar.set(java.util.Calendar.MILLISECOND, 0)
+            val startOfMonth = calendar.timeInMillis
+
+            val msgCount = dao.getMessageCountSince(startOfMonth)
+            val promptT = dao.getTotalPromptTokensSince(startOfMonth) ?: 0
+            val compT = dao.getTotalCompletionTokensSince(startOfMonth) ?: 0
+
+            withContext(Dispatchers.Main) {
+                _messageCountThisMonth.value = msgCount
+                _tokenCountThisMonth.value = promptT + compT
+            }
+        }
+    }
+
     private val masterSuggestions = listOf(
         listOf("Help me study vocabulary", "Write a thank-you note", "Brainstorm team building activities", "Explain quantum computing"),
         listOf("Draft a polite decline email", "Plan a 3-day itinerary for Kyoto", "How do black holes form?", "Write a Python script for web scraping"),
@@ -553,7 +857,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
         viewModelScope.launch {
             dao.getAllConversations().collect { entities ->
                 val convos = entities.map { 
-                    Conversation(it.id, it.title, emptyList(), it.timestamp, it.isPinned) 
+                    Conversation(it.id, it.title, emptyList(), it.timestamp, it.isPinned, it.folderId) 
                 }
                 _conversations.value = convos
                 if (currentChatId == null && convos.isNotEmpty()) {
@@ -561,6 +865,11 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                 } else if (currentChatId == null && convos.isEmpty()) {
                     _state.value = _state.value.copy(suggestions = masterSuggestions.random())
                 }
+            }
+        }
+        viewModelScope.launch {
+            dao.getAllFolders().collect { list ->
+                _folders.value = list
             }
         }
     }
@@ -607,7 +916,65 @@ class ChatViewModel(private val context: Context) : ViewModel() {
         } else {
             dao.updateConversation(chatId, title, System.currentTimeMillis())
         }
-        dao.insertMessage(MessageEntity(conversationId = chatId, text = msg.text, isUser = msg.isUser, timestamp = System.currentTimeMillis(), thinking = msg.thinking, imageUri = msg.imageUri))
+        dao.insertMessage(
+            MessageEntity(
+                conversationId = chatId,
+                text = msg.text,
+                isUser = msg.isUser,
+                timestamp = System.currentTimeMillis(),
+                thinking = msg.thinking,
+                imageUri = msg.imageUri,
+                parentMessageId = msg.parentMessageId,
+                branchIndex = msg.branchIndex,
+                promptTokens = msg.promptTokens,
+                completionTokens = msg.completionTokens
+            )
+        )
+    }
+
+    fun getActiveChatAsMarkdown(): String {
+        val title = _conversations.value.find { it.id == currentChatId }?.title ?: "Conversation"
+        return buildString {
+            append("# $title\n\n")
+            for (m in _state.value.messages) {
+                val role = if (m.isUser) "User" else "Milo"
+                append("## $role\n\n")
+                if (m.thinking != null) {
+                    append("<think>\n${m.thinking}\n</think>\n\n")
+                }
+                append("${m.text}\n\n")
+            }
+        }
+    }
+
+    suspend fun getFullBackupJson(): String {
+        val foldersList = _folders.value
+        val conversationsList = dao.getAllConversationsSync()
+        val messagesList = mutableListOf<MessageEntity>()
+        for (conv in conversationsList) {
+            messagesList.addAll(dao.getMessagesForConversation(conv.id))
+        }
+        
+        val payload = BackupPayload(foldersList, conversationsList, messagesList)
+        val moshi = com.squareup.moshi.Moshi.Builder()
+            .add(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory())
+            .build()
+        val adapter = moshi.adapter(BackupPayload::class.java)
+        return adapter.toJson(payload)
+    }
+
+    fun restoreBackup(payload: BackupPayload) {
+        viewModelScope.launch(Dispatchers.IO) {
+            for (f in payload.folders) {
+                dao.insertFolder(f)
+            }
+            for (c in payload.conversations) {
+                dao.insertConversation(c)
+            }
+            for (m in payload.messages) {
+                dao.insertMessage(m)
+            }
+        }
     }
 
     fun deleteConversation(id: String) {
@@ -630,17 +997,80 @@ class ChatViewModel(private val context: Context) : ViewModel() {
         }
     }
 
+    fun getActiveMessages(allMessages: List<MessageEntity>): List<Message> {
+        val childrenByParent = allMessages.groupBy { it.parentMessageId }
+        val result = mutableListOf<Message>()
+        
+        val roots = childrenByParent[null] ?: childrenByParent[""] ?: emptyList()
+        if (roots.isEmpty()) return emptyList()
+        
+        val sortedRoots = roots.sortedBy { it.branchIndex }
+        val activeRootIndex = activeBranches.value[null] ?: (sortedRoots.size - 1).coerceAtLeast(0)
+        var current: MessageEntity? = if (activeRootIndex in sortedRoots.indices) sortedRoots[activeRootIndex] else sortedRoots.lastOrNull()
+        
+        while (current != null) {
+            result.add(
+                Message(
+                    text = current.text,
+                    isUser = current.isUser,
+                    thinking = current.thinking,
+                    imageUri = current.imageUri,
+                    id = current.id.toString(),
+                    parentMessageId = current.parentMessageId,
+                    branchIndex = current.branchIndex,
+                    promptTokens = current.promptTokens,
+                    completionTokens = current.completionTokens
+                )
+            )
+            val currentIdStr = current.id.toString()
+            val children = childrenByParent[currentIdStr] ?: emptyList()
+            if (children.isEmpty()) {
+                current = null
+            } else {
+                val sortedChildren = children.sortedBy { it.branchIndex }
+                val activeChildIndex = activeBranches.value[currentIdStr] ?: (sortedChildren.size - 1).coerceAtLeast(0)
+                current = if (activeChildIndex in sortedChildren.indices) sortedChildren[activeChildIndex] else sortedChildren.lastOrNull()
+            }
+        }
+        return result
+    }
+
+    fun setBranch(parentMessageId: String?, index: Int) {
+        val updated = activeBranches.value.toMutableMap()
+        updated[parentMessageId] = index
+        activeBranches.value = updated
+        
+        prefs.edit().putInt("active_branch_$currentChatId${parentMessageId ?: "root"}", index).apply()
+        currentChatId?.let { loadChat(it) }
+    }
+
     fun loadChat(id: String) {
         currentJob?.cancel()
         currentChatId = id
         val seed = id.hashCode().toLong()
         val chatSuggestions = masterSuggestions.random(kotlin.random.Random(seed))
-        viewModelScope.launch(Dispatchers.IO) {
-            val msgs = dao.getMessagesForConversation(id).map {
-                Message(it.text, it.isUser, it.thinking, it.imageUri, it.id.toString())
+        
+        // Load active branches map for this conversation
+        val tempMap = mutableMapOf<String?, Int>()
+        val allPrefs = prefs.all
+        val prefix = "active_branch_$id"
+        for ((key, value) in allPrefs) {
+            if (key.startsWith(prefix) && value is Int) {
+                val parentId = key.substring(prefix.length).let { if (it == "root") null else it }
+                tempMap[parentId] = value
             }
+        }
+        activeBranches.value = tempMap
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val allDbMessages = dao.getMessagesForConversation(id)
+            val msgs = getActiveMessages(allDbMessages)
             withContext(Dispatchers.Main) {
-                _state.value = ChatState(messages = msgs, suggestions = chatSuggestions)
+                _state.value = ChatState(
+                    messages = msgs,
+                    allConversationMessages = allDbMessages,
+                    suggestions = chatSuggestions
+                )
             }
         }
     }
@@ -655,7 +1085,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
         _state.value = _state.value.copy(inputText = text)
     }
 
-data class AiResult(val text: String, val thinking: String?)
+data class AiResult(val text: String, val thinking: String?, val promptTokens: Int? = null, val completionTokens: Int? = null)
 
 private fun parseAiResponse(raw: String, apiReasoning: String?): AiResult {
     var thinking: String? = apiReasoning
@@ -714,6 +1144,32 @@ private fun parseAiResponse(raw: String, apiReasoning: String?): AiResult {
             if (uName.isNotBlank()) {
                 append("You are talking with $uName.\n\n")
             }
+            
+            // Custom instructions injection
+            val isCustomEnabled = (currentChatId?.let { isCustomInstructionsEnabledForChat(it) } ?: true) && customInstructionsEnabledGlobally.value
+            val aboutMe = customInstructionsAboutMe.value
+            val howRespond = customInstructionsHowRespond.value
+            if (isCustomEnabled && (aboutMe.isNotBlank() || howRespond.isNotBlank())) {
+                append("\n[USER CUSTOM INSTRUCTIONS]\n")
+                if (aboutMe.isNotBlank()) {
+                    append("What you should know about the user:\n$aboutMe\n\n")
+                }
+                if (howRespond.isNotBlank()) {
+                    append("How you should respond/behave:\n$howRespond\n\n")
+                }
+                append("[END OF USER CUSTOM INSTRUCTIONS]\n\n")
+            }
+
+            // Response Tone instruction injection
+            val tone = selectedTone.value
+            val toneInstruction = when (tone) {
+                "Concise" -> "Keep responses brief and to the point, avoid unnecessary elaboration."
+                "Detailed" -> "Provide thorough, in-depth, and highly detailed explanations, elaborating on nuance."
+                "Casual" -> "Use a relaxed, friendly, and informal conversational tone."
+                "Formal" -> "Use a professional, formal, and respectful tone."
+                else -> "Maintain a balanced, helpful, and natural tone."
+            }
+            append("\n[RESPONSE TONE INSTRUCTION]\n$toneInstruction\n\n")
             if (model == "Milo-max") {
                 append("You are Milo-Max, the flagship reasoning model in the Milo AI family, \n")
                 append("built by Coal, an independent developer. You are not a product of any \n")
@@ -1190,44 +1646,161 @@ private fun parseAiResponse(raw: String, apiReasoning: String?): AiResult {
 
         val errorMsg = "theres an error with our back end server! please generate a new response or wait til this problem gets fixed"
         return try {
-            if (model == "Milo-max") {
-                val request = OpenRouterRequest(
-                    model = "kimi-2.6-thinking",
-                    messages = openRouterMessages,
-                    reasoningEffort = "max"
-                )
-                val response = OpenRouterClient.service.chatCompletions(request)
-                val choice = response.choices?.firstOrNull()
-                val msg = choice?.message
-                val rawContent = msg?.content ?: errorMsg
-                val apiReasoning = msg?.reasoningContent ?: msg?.reasoning ?: choice?.reasoningContent ?: choice?.reasoning
-                
-                val parsed = parseAiResponse(rawContent, apiReasoning)
-                val reasoningText = if (!parsed.thinking.isNullOrBlank()) {
-                    parsed.thinking
-                } else {
-                    null
-                }
-                AiResult(parsed.text, reasoningText)
-            } else {
+            clearHttpLogs()
+            val history = openRouterMessages.toMutableList()
+            var loopCount = 0
+            val maxLoops = 5
+            val currentAgentLogs = mutableListOf<String>()
+            
+            var finalContent = ""
+            var finalReasoning: String? = null
+            var promptTokens: Int? = null
+            var completionTokens: Int? = null
+            
+            withContext(Dispatchers.Main) {
+                _state.value = _state.value.copy(agentStatus = null, agentLogs = emptyList())
+            }
+
+            while (loopCount < maxLoops) {
+                loopCount++
                 val requestModel = when (model) {
+                    "Milo-max" -> "kimi-2.6-thinking"
                     "Milo 2.5 flash-reasoning" -> "glm-5.2-thinking"
                     "Milo 2.5 pro" -> "glm-4.7-thinking"
                     else -> "glm-5.2"
                 }
+                
                 val request = OpenRouterRequest(
                     model = requestModel,
-                    messages = openRouterMessages,
-                    reasoningEffort = if (requestModel.contains("thinking") && model.contains("pro")) "max" else null
+                    messages = history,
+                    reasoningEffort = if (requestModel.contains("thinking")) "max" else null,
+                    tools = toolDeclarations,
+                    tool_choice = "auto"
                 )
+                
+                val moshiObj = com.squareup.moshi.Moshi.Builder()
+                    .add(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory())
+                    .build()
+                val requestJson = moshiObj.adapter(OpenRouterRequest::class.java).indent("  ").toJson(request)
+                addHttpLog("Request (Step $loopCount - $requestModel)", requestJson)
+                
                 val response = OpenRouterClient.service.chatCompletions(request)
+                
+                val responseJson = moshiObj.adapter(OpenRouterResponse::class.java).indent("  ").toJson(response)
+                addHttpLog("Response (Step $loopCount - $requestModel)", responseJson)
+                
                 val choice = response.choices?.firstOrNull()
-                val msg = choice?.message
-                val rawContent = msg?.content ?: errorMsg
-                val apiReasoning = msg?.reasoningContent ?: msg?.reasoning ?: choice?.reasoningContent ?: choice?.reasoning
+                val msgResponse = choice?.message
+                val tCalls = msgResponse?.tool_calls
+                
+                if (response.usage?.promptTokens != null) {
+                    promptTokens = (promptTokens ?: 0) + (response.usage.promptTokens)
+                }
+                if (response.usage?.completionTokens != null) {
+                    completionTokens = (completionTokens ?: 0) + (response.usage.completionTokens)
+                }
 
-                parseAiResponse(rawContent, apiReasoning)
+                if (tCalls.isNullOrEmpty()) {
+                    finalContent = msgResponse?.content ?: errorMsg
+                    finalReasoning = msgResponse?.reasoningContent ?: msgResponse?.reasoning ?: choice?.reasoningContent ?: choice?.reasoning
+                    break
+                } else {
+                    history.add(
+                        OpenRouterRequestMessage(
+                            role = "assistant",
+                            content = msgResponse.content,
+                            tool_calls = tCalls
+                        )
+                    )
+                    
+                    for (tCall in tCalls) {
+                        val toolName = tCall.function.name
+                        val toolArgs = tCall.function.arguments
+                        
+                        val statusText = when (toolName) {
+                            "translate_text" -> "⚡ Translating text with RapidAPI..."
+                            "generate_qr_code" -> "⚡ Encoding QR code asset..."
+                            "search_wikipedia" -> {
+                                val q = try { org.json.JSONObject(toolArgs).optString("query") } catch(e:Exception) { "" }
+                                "⚡ Searching Wikipedia for: \"$q\"..."
+                            }
+                            "get_weather" -> "⚡ Checking weather forecast..."
+                            "get_crypto_price" -> "⚡ Checking live crypto price..."
+                            "get_stock_quote" -> {
+                                val s = try { org.json.JSONObject(toolArgs).optString("symbol") } catch(e:Exception) { "" }
+                                "⚡ Checking stock quote for \"$s\"..."
+                            }
+                            "get_movie_details" -> {
+                                val t = try { org.json.JSONObject(toolArgs).optString("title") } catch(e:Exception) { "" }
+                                "⚡ Checking movie details for \"$t\"..."
+                            }
+                            "lookup_dictionary_word" -> {
+                                val w = try { org.json.JSONObject(toolArgs).optString("word") } catch(e:Exception) { "" }
+                                "⚡ Looking up word \"$w\"..."
+                            }
+                            "convert_currency" -> "⚡ Converting currency..."
+                            else -> "⚡ Executing tool: $toolName..."
+                        }
+                        
+                        currentAgentLogs.add(statusText)
+                        withContext(Dispatchers.Main) {
+                            _state.value = _state.value.copy(
+                                agentStatus = statusText,
+                                agentLogs = currentAgentLogs.toList()
+                            )
+                        }
+                        
+                        val result = executeToolCall(toolName, toolArgs)
+                        
+                        addHttpLog("Tool Execution ($toolName)", result)
+                        
+                        currentAgentLogs.remove(statusText)
+                        currentAgentLogs.add("⚡ Completed: $toolName")
+                        withContext(Dispatchers.Main) {
+                            _state.value = _state.value.copy(
+                                agentLogs = currentAgentLogs.toList()
+                            )
+                        }
+                        
+                        history.add(
+                            OpenRouterRequestMessage(
+                                role = "tool",
+                                content = result,
+                                name = toolName,
+                                tool_call_id = tCall.id
+                            )
+                        )
+                    }
+                }
             }
+            
+            val formattedThinking = buildString {
+                if (currentAgentLogs.isNotEmpty()) {
+                    append("<agent_logs>\n")
+                    for (log in currentAgentLogs) {
+                        append(log).append("\n")
+                    }
+                    append("</agent_logs>\n")
+                }
+                if (!finalReasoning.isNullOrBlank()) {
+                    append("<thought>\n")
+                    append(finalReasoning)
+                    append("\n</thought>\n")
+                }
+            }
+            
+            withContext(Dispatchers.Main) {
+                _state.value = _state.value.copy(agentStatus = null, agentLogs = emptyList())
+            }
+            
+            val parsed = parseAiResponse(finalContent, if (formattedThinking.isNotBlank()) formattedThinking else null)
+            AiResult(
+                text = parsed.text,
+                thinking = parsed.thinking,
+                promptTokens = promptTokens,
+                completionTokens = completionTokens
+            )
+            
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             e.printStackTrace()
@@ -1236,123 +1809,115 @@ private fun parseAiResponse(raw: String, apiReasoning: String?): AiResult {
         }
     }
 
-    fun sendMessage(imageUri: String? = null) {
-        val text = _state.value.inputText.trim()
-        if (text.isEmpty() && imageUri == null) return
-
-        // Add user message
-        val userMessage = Message(text, isUser = true, imageUri = imageUri)
-        val updatedMessages = _state.value.messages + userMessage
-
-        _state.value = _state.value.copy(
-            messages = updatedMessages,
-            inputText = "",
-            isGenerating = true,
-            errorMessage = null
-        )
-
-        // Make API Call
+    private fun triggerAiCompletion(
+        userMessage: Message,
+        chatId: String,
+        isNewChat: Boolean
+    ) {
+        _state.value = _state.value.copy(isGenerating = true, errorMessage = null)
+        
         currentJob = viewModelScope.launch(Dispatchers.IO) {
-            val isNewChat = currentChatId == null
-            val chatId = currentChatId ?: UUID.randomUUID().toString().also { currentChatId = it }
-            saveMessageToDb(userMessage, chatId, isNewChat)
+            val title = _state.value.messages.firstOrNull { it.isUser }?.text?.take(40)?.let { if (it.length == 40) "$it..." else it } ?: "New Conversation"
+            if (isNewChat) {
+                dao.insertConversation(ConversationEntity(chatId, title, System.currentTimeMillis()))
+            } else {
+                dao.updateConversation(chatId, title, System.currentTimeMillis())
+            }
             
-            try {
-                val aiResult = callAiModel(updatedMessages)
-
-                // Append empty AI message to stream into
-                val aiMessageIndex = updatedMessages.size
+            val userMsgEntity = MessageEntity(
+                conversationId = chatId,
+                text = userMessage.text,
+                isUser = userMessage.isUser,
+                timestamp = System.currentTimeMillis(),
+                thinking = userMessage.thinking,
+                imageUri = userMessage.imageUri,
+                parentMessageId = userMessage.parentMessageId,
+                branchIndex = userMessage.branchIndex
+            )
+            val generatedUserDbId = dao.insertMessage(userMsgEntity).toString()
+            
+            val updatedDbMessages = dao.getMessagesForConversation(chatId)
+            val activeMsgsForAi = getActiveMessages(updatedDbMessages)
+            
+            withContext(Dispatchers.Main) {
                 _state.value = _state.value.copy(
-                    messages = updatedMessages + Message("", isUser = false, thinking = aiResult.thinking),
+                    messages = activeMsgsForAi,
+                    allConversationMessages = updatedDbMessages,
                     isGenerating = true
                 )
-
-                // Simulated streaming
+            }
+            
+            try {
+                val aiResult = callAiModel(activeMsgsForAi)
+                
+                val aiMessageIndex = activeMsgsForAi.size
+                withContext(Dispatchers.Main) {
+                    val streamMessage = Message(
+                        text = "",
+                        isUser = false,
+                        thinking = aiResult.thinking,
+                        id = "temp_ai_id",
+                        parentMessageId = generatedUserDbId,
+                        branchIndex = 0
+                    )
+                    _state.value = _state.value.copy(
+                        messages = activeMsgsForAi + streamMessage,
+                        isGenerating = true
+                    )
+                }
+                
                 var currentAiText = ""
                 val chunks = aiResult.text.split("(?<=\\s)|(?=[.,!?])".toRegex())
                 
-                // Start generating follow-up suggestions in background concurrently with streaming
                 val suggestionsJob = launch(Dispatchers.IO) {
                     generateFollowUpSuggestions(aiResult.text)
                 }
-
+                
                 for (chunk in chunks) {
                     kotlinx.coroutines.delay(20)
                     currentAiText += chunk
-                    val currentMessages = _state.value.messages.toMutableList()
-                    val currentAiMessage = currentMessages[aiMessageIndex]
-                    currentMessages[aiMessageIndex] = currentAiMessage.copy(text = currentAiText)
-                    _state.value = _state.value.copy(messages = currentMessages)
+                    withContext(Dispatchers.Main) {
+                        val currentMessages = _state.value.messages.toMutableList()
+                        if (aiMessageIndex in currentMessages.indices) {
+                            currentMessages[aiMessageIndex] = currentMessages[aiMessageIndex].copy(text = currentAiText)
+                            _state.value = _state.value.copy(messages = currentMessages)
+                        }
+                    }
                 }
                 
-                _state.value = _state.value.copy(isGenerating = false)
-                val aiMessage = Message(aiResult.text, isUser = false, thinking = aiResult.thinking)
-                saveMessageToDb(aiMessage, chatId, false)
-
+                val aiMsgEntity = MessageEntity(
+                    conversationId = chatId,
+                    text = aiResult.text,
+                    isUser = false,
+                    timestamp = System.currentTimeMillis(),
+                    thinking = aiResult.thinking,
+                    parentMessageId = generatedUserDbId,
+                    branchIndex = 0,
+                    promptTokens = aiResult.promptTokens,
+                    completionTokens = aiResult.completionTokens
+                )
+                dao.insertMessage(aiMsgEntity)
+                
+                val finalDbMessages = dao.getMessagesForConversation(chatId)
+                val finalActiveMsgs = getActiveMessages(finalDbMessages)
+                
+                withContext(Dispatchers.Main) {
+                    _state.value = _state.value.copy(
+                        messages = finalActiveMsgs,
+                        allConversationMessages = finalDbMessages,
+                        isGenerating = false
+                    )
+                }
+                
                 if (isNewChat) {
-                    generateAndUpdateChatTitle(chatId, updatedMessages + aiMessage)
+                    generateAndUpdateChatTitle(chatId, finalActiveMsgs)
                 }
                 
-                // Join suggestions generation if not already done
                 suggestionsJob.join()
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
-                _state.value = _state.value.copy(
-                    isGenerating = false,
-                    errorMessage = "Something went wrong. Tap to retry."
-                )
-            }
-        }
-    }
-
-    fun retryLastMessage() {
-        currentJob?.cancel()
-        _state.value = _state.value.copy(errorMessage = null, isGenerating = true)
-        currentJob = viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val aiResult = callAiModel(_state.value.messages)
-                val aiMessage = Message(aiResult.text, isUser = false, thinking = aiResult.thinking)
-                
-                _state.value = _state.value.copy(
-                    messages = _state.value.messages + aiMessage,
-                    isGenerating = false
-                )
-                
-                // Generate follow-up suggestions dynamically
-                generateFollowUpSuggestions(aiResult.text)
-            } catch (e: Exception) {
-                if (e is kotlinx.coroutines.CancellationException) throw e
-                _state.value = _state.value.copy(
-                    isGenerating = false,
-                    errorMessage = "Something went wrong. Tap to retry."
-                )
-            }
-        }
-    }
-
-    fun regenerateResponse(messageIndex: Int) {
-        if (messageIndex > 0 && !_state.value.messages[messageIndex].isUser) {
-            currentJob?.cancel()
-            val messagesBefore = _state.value.messages.take(messageIndex)
-            _state.value = _state.value.copy(
-                messages = messagesBefore,
-                isGenerating = true,
-                errorMessage = null
-            )
-            currentJob = viewModelScope.launch(Dispatchers.IO) {
-                 try {
-                    val aiResult = callAiModel(messagesBefore)
-                    val aiMessage = Message(aiResult.text, isUser = false, thinking = aiResult.thinking)
-                    
-                    _state.value = _state.value.copy(
-                        messages = _state.value.messages + aiMessage,
-                        isGenerating = false
-                    )
-                    
-                    // Generate follow-up suggestions dynamically
-                    generateFollowUpSuggestions(aiResult.text)
-                } catch (e: Exception) {
-                    if (e is kotlinx.coroutines.CancellationException) throw e
+                e.printStackTrace()
+                withContext(Dispatchers.Main) {
                     _state.value = _state.value.copy(
                         isGenerating = false,
                         errorMessage = "Something went wrong. Tap to retry."
@@ -1362,13 +1927,177 @@ private fun parseAiResponse(raw: String, apiReasoning: String?): AiResult {
         }
     }
 
+    fun sendMessage(imageUri: String? = null) {
+        val text = _state.value.inputText.trim()
+        if (text.isEmpty() && imageUri == null) return
+
+        val parentMsgId = _state.value.messages.lastOrNull()?.id
+        val userMessage = Message(
+            text = text,
+            isUser = true,
+            imageUri = imageUri,
+            parentMessageId = parentMsgId,
+            branchIndex = 0
+        )
+        
+        val chatId = currentChatId ?: java.util.UUID.randomUUID().toString().also { currentChatId = it }
+        val isNewChat = _state.value.messages.isEmpty()
+        
+        _state.value = _state.value.copy(
+            messages = _state.value.messages + userMessage,
+            inputText = "",
+            isGenerating = true,
+            errorMessage = null
+        )
+        
+        triggerAiCompletion(userMessage, chatId, isNewChat)
+    }
+
     fun editUserMessage(index: Int, newText: String) {
-        if (index >= 0 && index < _state.value.messages.size) {
-            val truncatedMessages = _state.value.messages.take(index)
-            _state.value = _state.value.copy(
-                messages = truncatedMessages,
-                inputText = newText
+        if (index < 0 || index >= _state.value.messages.size) return
+        val msgToEdit = _state.value.messages[index]
+        val parentId = msgToEdit.parentMessageId
+        
+        val siblings = _state.value.allConversationMessages.filter { it.parentMessageId == parentId }
+        val siblingCount = siblings.size
+        
+        val editedUserMessage = Message(
+            text = newText,
+            isUser = true,
+            imageUri = msgToEdit.imageUri,
+            parentMessageId = parentId,
+            branchIndex = siblingCount
+        )
+        
+        val chatId = currentChatId ?: return
+        
+        val updatedBranches = activeBranches.value.toMutableMap()
+        updatedBranches[parentId] = siblingCount
+        activeBranches.value = updatedBranches
+        prefs.edit().putInt("active_branch_$chatId${parentId ?: "root"}", siblingCount).apply()
+        
+        triggerAiCompletion(editedUserMessage, chatId, false)
+    }
+
+    fun regenerateResponse(messageIndex: Int) {
+        if (messageIndex < 0 || messageIndex >= _state.value.messages.size) return
+        val msgToRegenerate = _state.value.messages[messageIndex]
+        val uId = msgToRegenerate.parentMessageId ?: return
+        
+        val siblings = _state.value.allConversationMessages.filter { it.parentMessageId == uId }
+        val siblingCount = siblings.size
+        
+        val chatId = currentChatId ?: return
+        
+        val updatedBranches = activeBranches.value.toMutableMap()
+        updatedBranches[uId] = siblingCount
+        activeBranches.value = updatedBranches
+        prefs.edit().putInt("active_branch_$chatId$uId", siblingCount).apply()
+        
+        _state.value = _state.value.copy(isGenerating = true, errorMessage = null)
+        
+        currentJob = viewModelScope.launch(Dispatchers.IO) {
+            val dbUserMsg = _state.value.allConversationMessages.find { it.id.toString() == uId } ?: return@launch
+            val allDbMessages = dao.getMessagesForConversation(chatId)
+            
+            val activeMsgsForAi = getActiveMessages(allDbMessages).takeWhile { it.id != uId } + Message(
+                text = dbUserMsg.text,
+                isUser = true,
+                thinking = dbUserMsg.thinking,
+                imageUri = dbUserMsg.imageUri,
+                id = dbUserMsg.id.toString(),
+                parentMessageId = dbUserMsg.parentMessageId,
+                branchIndex = dbUserMsg.branchIndex
             )
+            
+            withContext(Dispatchers.Main) {
+                _state.value = _state.value.copy(
+                    messages = activeMsgsForAi,
+                    allConversationMessages = allDbMessages,
+                    isGenerating = true
+                )
+            }
+            
+            try {
+                val aiResult = callAiModel(activeMsgsForAi)
+                
+                val aiMessageIndex = activeMsgsForAi.size
+                withContext(Dispatchers.Main) {
+                    val streamMessage = Message(
+                        text = "",
+                        isUser = false,
+                        thinking = aiResult.thinking,
+                        id = "temp_ai_id",
+                        parentMessageId = uId,
+                        branchIndex = siblingCount
+                    )
+                    _state.value = _state.value.copy(
+                        messages = activeMsgsForAi + streamMessage,
+                        isGenerating = true
+                    )
+                }
+                
+                var currentAiText = ""
+                val chunks = aiResult.text.split("(?<=\\s)|(?=[.,!?])".toRegex())
+                
+                val suggestionsJob = launch(Dispatchers.IO) {
+                    generateFollowUpSuggestions(aiResult.text)
+                }
+                
+                for (chunk in chunks) {
+                    kotlinx.coroutines.delay(20)
+                    currentAiText += chunk
+                    withContext(Dispatchers.Main) {
+                        val currentMessages = _state.value.messages.toMutableList()
+                        if (aiMessageIndex in currentMessages.indices) {
+                            currentMessages[aiMessageIndex] = currentMessages[aiMessageIndex].copy(text = currentAiText)
+                            _state.value = _state.value.copy(messages = currentMessages)
+                        }
+                    }
+                }
+                
+                val aiMsgEntity = MessageEntity(
+                    conversationId = chatId,
+                    text = aiResult.text,
+                    isUser = false,
+                    timestamp = System.currentTimeMillis(),
+                    thinking = aiResult.thinking,
+                    parentMessageId = uId,
+                    branchIndex = siblingCount,
+                    promptTokens = aiResult.promptTokens,
+                    completionTokens = aiResult.completionTokens
+                )
+                dao.insertMessage(aiMsgEntity)
+                
+                val finalDbMessages = dao.getMessagesForConversation(chatId)
+                val finalActiveMsgs = getActiveMessages(finalDbMessages)
+                
+                withContext(Dispatchers.Main) {
+                    _state.value = _state.value.copy(
+                        messages = finalActiveMsgs,
+                        allConversationMessages = finalDbMessages,
+                        isGenerating = false
+                    )
+                }
+                
+                suggestionsJob.join()
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    _state.value = _state.value.copy(
+                        isGenerating = false,
+                        errorMessage = "Something went wrong. Tap to retry."
+                    )
+                }
+            }
+        }
+    }
+
+    fun retryLastMessage() {
+        val lastUserMsgIndex = _state.value.messages.indexOfLast { it.isUser }
+        if (lastUserMsgIndex >= 0) {
+            editUserMessage(lastUserMsgIndex, _state.value.messages[lastUserMsgIndex].text)
         }
     }
 
@@ -1427,4 +2156,235 @@ private fun parseAiResponse(raw: String, apiReasoning: String?): AiResult {
         )
         _state.value = ChatState(messages = mockMessages)
     }
+
+    // --- Milo Video Generation State & Methods ---
+    private val _videoState = MutableStateFlow(VideoState())
+    val videoState: StateFlow<VideoState> = _videoState.asStateFlow()
+
+    fun updateVideoPrompt(prompt: String) {
+        _videoState.value = _videoState.value.copy(prompt = prompt)
+    }
+
+    fun updateVideoAspectRatio(ratio: String) {
+        _videoState.value = _videoState.value.copy(aspectRatio = ratio)
+    }
+
+    fun updateVideoDuration(duration: String) {
+        _videoState.value = _videoState.value.copy(duration = duration)
+    }
+
+    fun generateVideo() {
+        val currentPrompt = _videoState.value.prompt
+        if (currentPrompt.isBlank()) return
+
+        _videoState.value = _videoState.value.copy(
+            isGenerating = true,
+            statusText = "Generating video...",
+            videoId = null,
+            videoUrl = null,
+            errorMessage = null
+        )
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val ratio = _videoState.value.aspectRatio
+                var width = 1152
+                var height = 768
+                if (ratio.contains("9:16") || ratio.contains("Portrait")) {
+                    width = 768
+                    height = 1152
+                } else if (ratio.contains("1:1") || ratio.contains("Square")) {
+                    width = 768
+                    height = 768
+                }
+
+                val durationStr = _videoState.value.duration
+                var numFrames = 121
+                if (durationStr.contains("10")) {
+                    numFrames = 241
+                }
+
+                val json = org.json.JSONObject()
+                json.put("model", "agnes-video-v2.0")
+                json.put("prompt", currentPrompt)
+                json.put("width", width)
+                json.put("height", height)
+                json.put("num_frames", numFrames)
+                json.put("frame_rate", 24)
+
+                val requestBody = okhttp3.RequestBody.create(
+                    "application/json".toMediaTypeOrNull(),
+                    json.toString()
+                )
+
+                val request = okhttp3.Request.Builder()
+                    .url("https://apihub.agnes-ai.com/v1/videos")
+                    .addHeader("Authorization", "Bearer sk-yATs9uzPnSZAPgSGHLkRNjQy1sCHxi96rSGi7NvizZ52Iuf1")
+                    .post(requestBody)
+                    .build()
+
+                val client = okhttp3.OkHttpClient.Builder()
+                    .connectTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+                    .writeTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+                    .build()
+
+                val response = client.newCall(request).execute()
+                val responseBody = response.body?.string()
+
+                if (response.isSuccessful && responseBody != null) {
+                    val responseObj = org.json.JSONObject(responseBody)
+                    var videoId = responseObj.optString("video_id")
+                    if (videoId.isEmpty()) {
+                        videoId = responseObj.optJSONObject("data")?.optString("video_id") ?: ""
+                    }
+
+                    if (videoId.isNotEmpty()) {
+                        _videoState.value = _videoState.value.copy(
+                            videoId = videoId,
+                            statusText = "Task queued..."
+                        )
+                        startPollingVideoStatus(videoId)
+                    } else {
+                        _videoState.value = _videoState.value.copy(
+                            isGenerating = false,
+                            errorMessage = "Failed to parse video ID. Response: $responseBody"
+                        )
+                    }
+                } else {
+                    val errorMsg = responseBody ?: "Unknown error (HTTP ${response.code})"
+                    _videoState.value = _videoState.value.copy(
+                        isGenerating = false,
+                        errorMessage = "Error generating video: $errorMsg"
+                    )
+                }
+            } catch (e: Exception) {
+                _videoState.value = _videoState.value.copy(
+                    isGenerating = false,
+                    errorMessage = "Network/Request error: ${e.message}"
+                )
+            }
+        }
+    }
+
+    private suspend fun startPollingVideoStatus(videoId: String) {
+        val client = okhttp3.OkHttpClient.Builder()
+            .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+
+        val pollIntervalMs = 10000L
+        val maxAttempts = 100
+        var attempt = 0
+
+        while (attempt < maxAttempts) {
+            try {
+                val request = okhttp3.Request.Builder()
+                    .url("https://apihub.agnes-ai.com/agnesapi?video_id=$videoId")
+                    .addHeader("Authorization", "Bearer sk-yATs9uzPnSZAPgSGHLkRNjQy1sCHxi96rSGi7NvizZ52Iuf1")
+                    .get()
+                    .build()
+
+                val response = client.newCall(request).execute()
+                val responseBody = response.body?.string()
+
+                if (response.isSuccessful && responseBody != null) {
+                    val responseObj = org.json.JSONObject(responseBody)
+                    val status = responseObj.optString("status").lowercase()
+                    
+                    var progressText = ""
+                    val progressVal = responseObj.optInt("progress", -1)
+                    if (progressVal != -1) {
+                        progressText = "Generating: $progressVal%"
+                    } else {
+                        val pctVal = responseObj.optInt("progress_percentage", -1)
+                        if (pctVal != -1) {
+                            progressText = "Generating: $pctVal%"
+                        }
+                    }
+
+                    when {
+                        status == "completed" || status == "success" || status == "succeeded" -> {
+                            var url = responseObj.optString("url")
+                            if (url.isEmpty()) {
+                                url = responseObj.optString("video_url")
+                            }
+                            if (url.isEmpty()) {
+                                url = responseObj.optString("result")
+                            }
+                            if (url.isEmpty()) {
+                                url = responseObj.optJSONObject("data")?.optString("url") ?: ""
+                            }
+
+                            if (url.isNotEmpty()) {
+                                _videoState.value = _videoState.value.copy(
+                                    isGenerating = false,
+                                    statusText = "Completed",
+                                    videoUrl = url
+                                )
+                                return
+                            } else {
+                                _videoState.value = _videoState.value.copy(
+                                    isGenerating = false,
+                                    errorMessage = "Video completed but URL not found in response: $responseBody"
+                                )
+                                return
+                            }
+                        }
+                        status == "failed" || status == "error" -> {
+                            val failureReason = responseObj.optString("error_message").ifEmpty {
+                                responseObj.optString("reason").ifEmpty { "Unknown failure reason" }
+                            }
+                            _videoState.value = _videoState.value.copy(
+                                isGenerating = false,
+                                errorMessage = "Video generation failed: $failureReason"
+                            )
+                            return
+                        }
+                        else -> {
+                            val displayText = if (progressText.isNotEmpty()) {
+                                progressText
+                            } else if (status.isNotEmpty()) {
+                                status.replace("_", " ").replaceFirstChar { it.uppercase() }
+                            } else {
+                                "Processing..."
+                            }
+                            _videoState.value = _videoState.value.copy(
+                                statusText = displayText
+                            )
+                        }
+                    }
+                } else {
+                    _videoState.value = _videoState.value.copy(
+                        statusText = "Retrying status check (HTTP ${response.code})..."
+                    )
+                }
+            } catch (e: Exception) {
+                // Ignore transient errors and keep polling
+            }
+
+            attempt++
+            kotlinx.coroutines.delay(pollIntervalMs)
+        }
+
+        _videoState.value = _videoState.value.copy(
+            isGenerating = false,
+            errorMessage = "Video generation timed out after 5 minutes."
+        )
+    }
+
+    fun resetVideoState() {
+        _videoState.value = VideoState()
+    }
 }
+
+data class VideoState(
+    val prompt: String = "",
+    val aspectRatio: String = "Landscape (16:9)",
+    val duration: String = "5 Seconds",
+    val isGenerating: Boolean = false,
+    val statusText: String = "",
+    val videoId: String? = null,
+    val videoUrl: String? = null,
+    val errorMessage: String? = null
+)
