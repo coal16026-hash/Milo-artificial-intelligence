@@ -17,22 +17,20 @@ jobs:
       with:
         java-version: '17'
         distribution: 'temurin'
-        cache: gradle
 
-    - name: Find Project Root and Build
+    - name: Generate Official Gradle Wrapper
       run: |
-        # Search for the directory containing gradlew
-        GRADLE_DIR=$(find . -name gradlew -exec dirname {} \+ | head -n 1)
+        echo "--> Installing global gradle to generate wrapper..."
+        sudo apt-get update && sudo apt-get install -y gradle
         
-        if [ -z "$GRADLE_DIR" ]; then
-          echo "ERROR: gradlew file could not be found anywhere in this repository!"
-          exit 1
-        fi
+        echo "--> Generating clean gradlew files..."
+        gradle wrapper --gradle-version 8.5
         
-        echo "Found Android project root in: $GRADLE_DIR"
-        cd "$GRADLE_DIR"
-        
-        # Grant permissions and compile
+        echo "--> Verifying new environment files..."
+        ls -la
+
+    - name: Fix Permissions & Compile
+      run: |
         chmod +x gradlew
         ./gradlew assembleDebug
 
