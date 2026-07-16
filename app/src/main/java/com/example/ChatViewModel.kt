@@ -119,7 +119,7 @@ data class ImageUrl(
 @JsonClass(generateAdapter = true)
 data class OpenRouterRequestMessage(
     val role: String,
-    val content: List<ContentPart>?
+    val content: Any
 )
 
 @JsonClass(generateAdapter = true)
@@ -145,9 +145,6 @@ data class OpenRouterChoice(
 )
 
 interface OpenRouterApiService {
-    @retrofit2.http.Headers(
-        "Authorization: Bearer sk-aLgmFNww1yVavYccaXd3pyXzyfm5YegqpPxDxbFvavhyR5Xf"
-    )
     @POST("v1/chat/completions")
     suspend fun chatCompletions(
         @Body request: OpenRouterRequest
@@ -161,6 +158,17 @@ object OpenRouterClient {
         .connectTimeout(60, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .writeTimeout(60, TimeUnit.SECONDS)
+        .addInterceptor { chain ->
+            val apiKey = when {
+                BuildConfig.crowllmapikey.isNotBlank() && !BuildConfig.crowllmapikey.contains("MY_CROWLLM_API_KEY") -> BuildConfig.crowllmapikey
+                BuildConfig.CROWLLM_API_KEY.isNotBlank() && !BuildConfig.CROWLLM_API_KEY.contains("MY_CROWLLM_API_KEY") -> BuildConfig.CROWLLM_API_KEY
+                else -> "sk-aLgmFNww1yVavYccaXd3pyXzyfm5YegqpPxDxbFvavhyR5Xf"
+            }
+            val request = chain.request().newBuilder()
+                .header("Authorization", "Bearer $apiKey")
+                .build()
+            chain.proceed(request)
+        }
         .build()
 
     private val moshi = Moshi.Builder()
@@ -181,7 +189,13 @@ object OpenRouterClient {
 
 // --- ViewModel ---
 
-data class Message(val text: String, val isUser: Boolean, val thinking: String? = null, val imageUri: String? = null)
+data class Message(
+    val text: String,
+    val isUser: Boolean,
+    val thinking: String? = null,
+    val imageUri: String? = null,
+    val id: String = java.util.UUID.randomUUID().toString()
+)
 
 data class ChatState(
     val messages: List<Message> = emptyList(),
@@ -195,6 +209,13 @@ data class ChatState(
 data class Conversation(val id: String, val title: String, val messages: List<Message>, val timestamp: Long, val isPinned: Boolean = false)
 
 class ChatViewModel(private val context: Context) : ViewModel() {
+    companion object {
+        // NOTE: This is a client-side gate only, not a real security boundary.
+        // It is purely for personal/local access control or prototyping and can be bypassed by editing local SharedPreferences or patching the APK.
+        // It must NOT be treated as a secure access-control boundary if this app is ever used in a multi-user environment.
+        const val MILO_MAX_UNLOCK_CODE = "1976"
+    }
+
     private val db = AppDatabase.getDatabase(context)
     private val dao = db.chatDao()
     private val prefs = context.getSharedPreferences("milo_settings", Context.MODE_PRIVATE)
@@ -226,7 +247,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
 
     fun setSelectedModel(model: String, secretCode: String = "") {
         if (model == "Milo-max") {
-            if (secretCode == "1976") {
+            if (secretCode == MILO_MAX_UNLOCK_CODE) {
                 prefs.edit().putString("miloMaxSessionAuthenticated", "true").apply()
             } else {
                 _selectedModel.value = "Milo 2.5 flash-non reasoning"
@@ -309,6 +330,54 @@ class ChatViewModel(private val context: Context) : ViewModel() {
             .apply()
     }
 
+    fun signInAsGuest() {
+        _isLoggedIn.value = true
+        _userEmail.value = "guest@milo.ai"
+        _userName.value = "Guest User"
+        _authMethod.value = "Guest"
+        prefs.edit()
+            .putBoolean("isLoggedIn", true)
+            .putString("userEmail", "guest@milo.ai")
+            .putString("userName", "Guest User")
+            .putString("authMethod", "Guest")
+            .apply()
+    }
+
+    fun updateWithFirebaseUser(user: com.google.firebase.auth.FirebaseUser?) {
+        if (user != null) {
+            _isLoggedIn.value = true
+            val email = user.email ?: ""
+            val name = user.displayName ?: (if (email.isNotBlank()) email.substringBefore("@") else "User")
+            val phone = user.phoneNumber ?: ""
+            _userEmail.value = email
+            _userName.value = name
+            _userPhone.value = phone
+            _authMethod.value = if (user.providerData.any { it.providerId == "google.com" }) "Google" else if (phone.isNotBlank()) "Phone" else "Email"
+            prefs.edit()
+                .putBoolean("isLoggedIn", true)
+                .putString("userEmail", email)
+                .putString("userName", name)
+                .putString("userPhone", phone)
+                .putString("authMethod", _authMethod.value)
+                .apply()
+        } else {
+            if (_authMethod.value != "Guest") {
+                _isLoggedIn.value = false
+                _userEmail.value = ""
+                _userName.value = ""
+                _userPhone.value = ""
+                _authMethod.value = "None"
+                prefs.edit()
+                    .putBoolean("isLoggedIn", false)
+                    .putString("userEmail", "")
+                    .putString("userName", "")
+                    .putString("userPhone", "")
+                    .putString("authMethod", "None")
+                    .apply()
+            }
+        }
+    }
+
     fun signOut() {
         _isLoggedIn.value = false
         _userEmail.value = ""
@@ -322,6 +391,11 @@ class ChatViewModel(private val context: Context) : ViewModel() {
             .remove("userPhone")
             .remove("authMethod")
             .apply()
+        try {
+            com.google.firebase.auth.FirebaseAuth.getInstance().signOut()
+        } catch (e: Exception) {
+            // Firebase not initialized, ignore
+        }
     }
 
     fun setTheme(theme: String) {
@@ -402,7 +476,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
             }
             val request = OpenRouterRequest(
                 model = "glm-5.2",
-                messages = listOf(OpenRouterRequestMessage(role = "user", content = listOf(ContentPart(type="text", text=titlePrompt))))
+                messages = listOf(OpenRouterRequestMessage(role = "user", content = titlePrompt))
             )
             val response = OpenRouterClient.service.chatCompletions(request)
             val generatedTitle = response.choices?.firstOrNull()?.message?.content?.trim()?.removeSurrounding("\"")
@@ -451,7 +525,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
         val chatSuggestions = masterSuggestions.random(kotlin.random.Random(seed))
         viewModelScope.launch(Dispatchers.IO) {
             val msgs = dao.getMessagesForConversation(id).map {
-                Message(it.text, it.isUser, it.thinking, it.imageUri)
+                Message(it.text, it.isUser, it.thinking, it.imageUri, it.id.toString())
             }
             withContext(Dispatchers.Main) {
                 _state.value = ChatState(messages = msgs, suggestions = chatSuggestions)
@@ -524,6 +598,10 @@ private fun parseAiResponse(raw: String, apiReasoning: String?): AiResult {
 
         val openRouterMessages = mutableListOf<OpenRouterRequestMessage>()
         val systemPrompt = buildString {
+            val uName = userName.value
+            if (uName.isNotBlank()) {
+                append("You are talking with $uName.\n\n")
+            }
             if (model == "Milo-max") {
                 append("You are Milo-Max, the flagship reasoning model in the Milo AI family, \n")
                 append("built by Coal, an independent developer. You are not a product of any \n")
@@ -958,16 +1036,16 @@ private fun parseAiResponse(raw: String, apiReasoning: String?): AiResult {
         openRouterMessages.add(
             OpenRouterRequestMessage(
                 role = "system",
-                content = listOf(ContentPart(type = "text", text = systemPrompt))
+                content = systemPrompt
             )
         )
 
         for (msg in messages) {
-            val contentList = mutableListOf<ContentPart>()
-            if (msg.text.isNotBlank()) {
-                contentList.add(ContentPart(type = "text", text = msg.text))
-            }
             if (msg.imageUri != null) {
+                val contentList = mutableListOf<ContentPart>()
+                if (msg.text.isNotBlank()) {
+                    contentList.add(ContentPart(type = "text", text = msg.text))
+                }
                 try {
                     val uri = android.net.Uri.parse(msg.imageUri)
                     val inputStream = context.contentResolver.openInputStream(uri)
@@ -981,13 +1059,20 @@ private fun parseAiResponse(raw: String, apiReasoning: String?): AiResult {
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
-            }
-            openRouterMessages.add(
-                OpenRouterRequestMessage(
-                    role = if (msg.isUser) "user" else "assistant",
-                    content = if (contentList.isNotEmpty()) contentList else listOf(ContentPart(type="text", text=""))
+                openRouterMessages.add(
+                    OpenRouterRequestMessage(
+                        role = if (msg.isUser) "user" else "assistant",
+                        content = if (contentList.isNotEmpty()) contentList else ""
+                    )
                 )
-            )
+            } else {
+                openRouterMessages.add(
+                    OpenRouterRequestMessage(
+                        role = if (msg.isUser) "user" else "assistant",
+                        content = msg.text
+                    )
+                )
+            }
         }
 
 
@@ -1003,21 +1088,15 @@ private fun parseAiResponse(raw: String, apiReasoning: String?): AiResult {
                 val choice = response.choices?.firstOrNull()
                 val msg = choice?.message
                 val rawContent = msg?.content ?: errorMsg
-                var apiReasoning = msg?.reasoningContent ?: msg?.reasoning ?: choice?.reasoningContent ?: choice?.reasoning
+                val apiReasoning = msg?.reasoningContent ?: msg?.reasoning ?: choice?.reasoningContent ?: choice?.reasoning
                 
                 val parsed = parseAiResponse(rawContent, apiReasoning)
-                val enhancedReasoning = buildString {
-                    append("🔬 [Deep Neural Analysis - Milo-max / Kimi-2.6-thinking Core]\n")
-                    append("• Step 1: Parsing user intent, context dependencies, and semantic constraints across advanced attention heads...\n")
-                    append("• Step 2: Executing multi-hypothesis vector evaluation & knowledge retrieval verification...\n")
-                    if (!parsed.thinking.isNullOrBlank()) {
-                        append("• Step 3 (Model Core Trace):\n${parsed.thinking}\n")
-                    } else {
-                        append("• Step 3: Performing deep zero-shot counterfactual simulation & logical consistency check...\n")
-                    }
-                    append("• Step 4: Synthesizing optimal output parameters with maximum confidence weighting.")
+                val reasoningText = if (!parsed.thinking.isNullOrBlank()) {
+                    parsed.thinking
+                } else {
+                    null
                 }
-                AiResult(parsed.text, enhancedReasoning)
+                AiResult(parsed.text, reasoningText)
             } else {
                 val requestModel = when (model) {
                     "Milo 2.5 flash-reasoning" -> "glm-5.2-thinking"
@@ -1039,7 +1118,9 @@ private fun parseAiResponse(raw: String, apiReasoning: String?): AiResult {
             }
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
-            AiResult(errorMsg, null)
+            e.printStackTrace()
+            val detailedError = "$errorMsg\n\n[Debug Info: ${e.javaClass.simpleName}: ${e.message}]"
+            AiResult(detailedError, null)
         }
     }
 
@@ -1077,6 +1158,12 @@ private fun parseAiResponse(raw: String, apiReasoning: String?): AiResult {
                 // Simulated streaming
                 var currentAiText = ""
                 val chunks = aiResult.text.split("(?<=\\s)|(?=[.,!?])".toRegex())
+                
+                // Start generating follow-up suggestions in background concurrently with streaming
+                val suggestionsJob = launch(Dispatchers.IO) {
+                    generateFollowUpSuggestions(aiResult.text)
+                }
+
                 for (chunk in chunks) {
                     kotlinx.coroutines.delay(20)
                     currentAiText += chunk
@@ -1093,6 +1180,9 @@ private fun parseAiResponse(raw: String, apiReasoning: String?): AiResult {
                 if (isNewChat) {
                     generateAndUpdateChatTitle(chatId, updatedMessages + aiMessage)
                 }
+                
+                // Join suggestions generation if not already done
+                suggestionsJob.join()
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 _state.value = _state.value.copy(
@@ -1104,8 +1194,9 @@ private fun parseAiResponse(raw: String, apiReasoning: String?): AiResult {
     }
 
     fun retryLastMessage() {
+        currentJob?.cancel()
         _state.value = _state.value.copy(errorMessage = null, isGenerating = true)
-        viewModelScope.launch(Dispatchers.IO) {
+        currentJob = viewModelScope.launch(Dispatchers.IO) {
             try {
                 val aiResult = callAiModel(_state.value.messages)
                 val aiMessage = Message(aiResult.text, isUser = false, thinking = aiResult.thinking)
@@ -1114,7 +1205,11 @@ private fun parseAiResponse(raw: String, apiReasoning: String?): AiResult {
                     messages = _state.value.messages + aiMessage,
                     isGenerating = false
                 )
+                
+                // Generate follow-up suggestions dynamically
+                generateFollowUpSuggestions(aiResult.text)
             } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 _state.value = _state.value.copy(
                     isGenerating = false,
                     errorMessage = "Something went wrong. Tap to retry."
@@ -1125,13 +1220,14 @@ private fun parseAiResponse(raw: String, apiReasoning: String?): AiResult {
 
     fun regenerateResponse(messageIndex: Int) {
         if (messageIndex > 0 && !_state.value.messages[messageIndex].isUser) {
+            currentJob?.cancel()
             val messagesBefore = _state.value.messages.take(messageIndex)
             _state.value = _state.value.copy(
                 messages = messagesBefore,
                 isGenerating = true,
                 errorMessage = null
             )
-            viewModelScope.launch(Dispatchers.IO) {
+            currentJob = viewModelScope.launch(Dispatchers.IO) {
                  try {
                     val aiResult = callAiModel(messagesBefore)
                     val aiMessage = Message(aiResult.text, isUser = false, thinking = aiResult.thinking)
@@ -1140,7 +1236,11 @@ private fun parseAiResponse(raw: String, apiReasoning: String?): AiResult {
                         messages = _state.value.messages + aiMessage,
                         isGenerating = false
                     )
+                    
+                    // Generate follow-up suggestions dynamically
+                    generateFollowUpSuggestions(aiResult.text)
                 } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
                     _state.value = _state.value.copy(
                         isGenerating = false,
                         errorMessage = "Something went wrong. Tap to retry."
@@ -1157,6 +1257,47 @@ private fun parseAiResponse(raw: String, apiReasoning: String?): AiResult {
                 messages = truncatedMessages,
                 inputText = newText
             )
+        }
+    }
+
+    private suspend fun generateFollowUpSuggestions(aiResponseText: String) {
+        if (aiResponseText.isBlank()) return
+        try {
+            val localMoshi = com.squareup.moshi.Moshi.Builder()
+                .add(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory())
+                .build()
+            val systemPrompt = "You are a helpful assistant that generates exactly 3 conversational, direct, and short (under 6-8 words each) follow-up questions or prompt suggestions that a user might want to ask next based on the provided AI response. Output ONLY a valid JSON array of strings, e.g. [\"question 1\", \"question 2\", \"question 3\"]. No markdown, no formatting."
+            val messages = listOf(
+                OpenRouterRequestMessage(
+                    role = "system",
+                    content = systemPrompt
+                ),
+                OpenRouterRequestMessage(
+                    role = "user",
+                    content = "Generate 3 follow-up suggestions for this response:\n\n$aiResponseText"
+                )
+            )
+            val request = OpenRouterRequest(
+                model = "glm-5.2",
+                messages = messages
+            )
+            val response = OpenRouterClient.service.chatCompletions(request)
+            val content = response.choices?.firstOrNull()?.message?.content ?: ""
+            val jsonText = content.trim().removeSurrounding("```json", "```").trim().removeSurrounding("```", "```").trim()
+            val listType = com.squareup.moshi.Types.newParameterizedType(List::class.java, String::class.java)
+            val adapter = localMoshi.adapter<List<String>>(listType)
+            val parsedList = adapter.fromJson(jsonText)
+            if (parsedList != null && parsedList.isNotEmpty()) {
+                withContext(Dispatchers.Main) {
+                    _state.value = _state.value.copy(suggestions = parsedList)
+                }
+                return
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        withContext(Dispatchers.Main) {
+            _state.value = _state.value.copy(suggestions = masterSuggestions.random())
         }
     }
 

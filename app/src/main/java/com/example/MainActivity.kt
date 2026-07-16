@@ -15,6 +15,7 @@ import java.io.FileOutputStream
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
@@ -42,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -70,23 +72,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             MyApplicationTheme {
-                val auth = remember { 
-                    try { 
-                        FirebaseAuth.getInstance() 
-                    } catch (e: Exception) { 
-                        null 
-                    } 
-                }
-                var user by remember { mutableStateOf(auth?.currentUser) }
-
-                if (user == null && auth != null) {
-                    AuthScreen(onAuthSuccess = { user = auth.currentUser })
-                } else if (user == null && auth == null) {
-                    // Fallback to mock login if Firebase failed to initialize
-                    ChatScreen()
-                } else {
-                    ChatScreen()
-                }
+                ChatScreen()
             }
         }
     }
@@ -119,10 +105,10 @@ fun getAppColors(themeSetting: String): AppColors {
         "Pure black (AMOLED)" -> Color(0xFF000000)
         "Dark gray" -> Color(0xFF0A0A0A)
         "Charcoal / Medium gray" -> Color(0xFF1C1C1E)
-        "Midnight Blue" -> Color(0xFF050B18)
-        "Forest Green" -> Color(0xFF08140E)
-        "Sunset Orange" -> Color(0xFF1A0F0A)
-        "Rose Gold" -> Color(0xFF14080E)
+        "Midnight Blue" -> Color(0xFF0B1220)
+        "Forest Green" -> Color(0xFF0D1A13)
+        "Sunset Orange" -> Color(0xFF1F1310)
+        "Rose Gold" -> Color(0xFF1A0E14)
         "Soft Light Gray" -> Color(0xFFEDEDED)
         "Pure white" -> Color(0xFFFFFFFF)
         "Follow System" -> if (isSystemDark) Color(0xFF0A0A0A) else Color(0xFFEDEDED)
@@ -130,51 +116,51 @@ fun getAppColors(themeSetting: String): AppColors {
     }
 
     val primary = when (themeSetting) {
-        "Midnight Blue" -> Color(0xFF3A86FF)
-        "Forest Green" -> Color(0xFF2ECC71)
-        "Sunset Orange" -> Color(0xFFE67E22)
-        "Rose Gold" -> Color(0xFFE91E63)
+        "Midnight Blue" -> Color(0xFF4A9EFF)
+        "Forest Green" -> Color(0xFF3DDC84)
+        "Sunset Orange" -> Color(0xFFFF9142)
+        "Rose Gold" -> Color(0xFFFF5C8A)
         "Pure black (AMOLED)" -> Color(0xFFFFFFFF)
         else -> if (isDark) Color(0xFFEDEDED) else Color(0xFF111111)
     }
 
     val inputBg = when (themeSetting) {
-        "Midnight Blue" -> Color(0xFF0E1A35)
-        "Forest Green" -> Color(0xFF0F261B)
-        "Sunset Orange" -> Color(0xFF2C1A11)
-        "Rose Gold" -> Color(0xFF260F1B)
+        "Midnight Blue" -> Color(0xFF12233C)
+        "Forest Green" -> Color(0xFF142C1E)
+        "Sunset Orange" -> Color(0xFF2F1F19)
+        "Rose Gold" -> Color(0xFF2A1921)
         else -> if (isDark) Color(0xFF212121) else Color(0xFFE5E5EA)
     }
 
     val bubbleGray = when (themeSetting) {
-        "Midnight Blue" -> Color(0xFF1A2A4A)
-        "Forest Green" -> Color(0xFF1B3628)
-        "Sunset Orange" -> Color(0xFF3C261B)
-        "Rose Gold" -> Color(0xFF361B28)
+        "Midnight Blue" -> Color(0xFF1E3A5F)
+        "Forest Green" -> Color(0xFF1F4A32)
+        "Sunset Orange" -> Color(0xFF4A2E1A)
+        "Rose Gold" -> Color(0xFF4A2436)
         else -> if (isDark) Color(0xFF212121) else Color(0xFFD4D4D8)
     }
 
     val aiText = if (isDark) Color(0xFFEDEDED) else Color(0xFF111111)
     val textGray = when (themeSetting) {
-        "Midnight Blue" -> Color(0xFF7A9BCF)
-        "Forest Green" -> Color(0xFF7ACF9B)
-        "Sunset Orange" -> Color(0xFFCF9B7A)
-        "Rose Gold" -> Color(0xFFCF7A9B)
+        "Midnight Blue" -> Color(0xFF90B4EC)
+        "Forest Green" -> Color(0xFF8CEFA4)
+        "Sunset Orange" -> Color(0xFFFFB684)
+        "Rose Gold" -> Color(0xFFFF8EAD)
         else -> if (isDark) Color(0xFFB4B4B4) else Color(0xFF6B6B6B)
     }
     val iconGray = if (isDark) Color(0xFF8E8E8E) else Color(0xFF71717A)
     val plusBg = when (themeSetting) {
-        "Midnight Blue" -> Color(0xFF0A1528)
-        "Forest Green" -> Color(0xFF0A2815)
-        "Sunset Orange" -> Color(0xFF28150A)
-        "Rose Gold" -> Color(0xFF280A15)
+        "Midnight Blue" -> Color(0xFF0F1B2F)
+        "Forest Green" -> Color(0xFF102117)
+        "Sunset Orange" -> Color(0xFF261814)
+        "Rose Gold" -> Color(0xFF211319)
         else -> if (isDark) Color(0xFF171717) else Color(0xFFD4D4D8)
     }
     val borderGray = when (themeSetting) {
-        "Midnight Blue" -> Color(0xFF2A3A5A)
-        "Forest Green" -> Color(0xFF2A5A3A)
-        "Sunset Orange" -> Color(0xFF5A3A2A)
-        "Rose Gold" -> Color(0xFF5A2A3A)
+        "Midnight Blue" -> Color(0xFF2E4B77)
+        "Forest Green" -> Color(0xFF2A6041)
+        "Sunset Orange" -> Color(0xFF63412B)
+        "Rose Gold" -> Color(0xFF63344D)
         else -> if (isDark) Color(0xFF2A2A2A) else Color(0xFFD1D5DB)
     }
 
@@ -183,13 +169,22 @@ fun getAppColors(themeSetting: String): AppColors {
 
 @Composable
 fun AvatarIcon(avatar: String, colors: AppColors, modifier: Modifier = Modifier) {
-    when (avatar) {
-        "robot" -> Icon(Icons.Outlined.SmartToy, null, tint = colors.aiText, modifier = modifier)
-        "star" -> Icon(Icons.Outlined.Star, null, tint = colors.aiText, modifier = modifier)
-        "heart" -> Icon(Icons.Outlined.Favorite, null, tint = colors.aiText, modifier = modifier)
-        "bolt" -> Icon(Icons.Outlined.Bolt, null, tint = colors.aiText, modifier = modifier)
-        "face" -> Icon(Icons.Outlined.Face, null, tint = colors.aiText, modifier = modifier)
-        else -> Icon(Icons.Outlined.AccountCircle, null, tint = colors.aiText, modifier = modifier)
+    if (avatar.startsWith("content://") || avatar.startsWith("file://") || avatar.contains("/")) {
+        coil.compose.AsyncImage(
+            model = avatar,
+            contentDescription = "User Avatar",
+            modifier = modifier.clip(CircleShape),
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+        )
+    } else {
+        when (avatar) {
+            "robot" -> Icon(Icons.Outlined.SmartToy, null, tint = colors.aiText, modifier = modifier)
+            "star" -> Icon(Icons.Outlined.Star, null, tint = colors.aiText, modifier = modifier)
+            "heart" -> Icon(Icons.Outlined.Favorite, null, tint = colors.aiText, modifier = modifier)
+            "bolt" -> Icon(Icons.Outlined.Bolt, null, tint = colors.aiText, modifier = modifier)
+            "face" -> Icon(Icons.Outlined.Face, null, tint = colors.aiText, modifier = modifier)
+            else -> Icon(Icons.Outlined.AccountCircle, null, tint = colors.aiText, modifier = modifier)
+        }
     }
 }
 
@@ -213,6 +208,16 @@ fun ChatScreen() {
     val isLoggedIn by viewModel.isLoggedIn.collectAsState()
     val userAvatar by viewModel.userAvatar.collectAsState()
     val colors = getAppColors(theme)
+
+    // Sync with Firebase Auth state at startup
+    LaunchedEffect(Unit) {
+        try {
+            val firebaseAuth = com.google.firebase.auth.FirebaseAuth.getInstance()
+            viewModel.updateWithFirebaseUser(firebaseAuth.currentUser)
+        } catch (e: Exception) {
+            // Firebase not initialized, keep local state
+        }
+    }
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -286,33 +291,11 @@ fun ChatScreen() {
     // Auto-scroll to bottom on new messages if not manually scrolled up
     LaunchedEffect(state.messages.size, state.isGenerating) {
         if (state.messages.isNotEmpty() && !userScrolledUp) {
-            listState.animateScrollToItem(state.messages.size)
+            listState.animateScrollToItem(state.messages.size - 1)
         }
     }
 
-    AnimatedVisibility(
-        visible = showSignIn,
-        enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
-        exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
-    ) {
-        SignInScreen(
-            viewModel = viewModel,
-            colors = colors,
-            onBack = { showSignIn = false }
-        )
-    }
-
-    if (showSettings && !showSignIn) {
-        SettingsScreen(
-            viewModel = viewModel,
-            colors = colors,
-            onBack = { showSettings = false },
-            onOpenSignIn = { showSignIn = true },
-            onClearAll = { viewModel.clearAllConversations() }
-        )
-    }
-
-    if (!showSettings) {
+    Box(modifier = Modifier.fillMaxSize()) {
         ModalNavigationDrawer(
             modifier = Modifier.imePadding(),
             drawerState = drawerState,
@@ -506,6 +489,7 @@ fun ChatScreen() {
                                 androidx.compose.material3.AlertDialog(
                                     onDismissRequest = { showSearchDialog = false },
                                     containerColor = colors.plusBg,
+                                    modifier = Modifier.shadow(8.dp, shape = AlertDialogDefaults.shape),
                                     title = { Text("Find in Chat", color = colors.aiText) },
                                     text = {
                                         Column {
@@ -551,6 +535,7 @@ fun ChatScreen() {
                                 androidx.compose.material3.AlertDialog(
                                     onDismissRequest = { showArtifactsDialog = false },
                                     containerColor = colors.plusBg,
+                                    modifier = Modifier.shadow(8.dp, shape = AlertDialogDefaults.shape),
                                     title = { Text("Chat Artifacts (${artifacts.size})", color = colors.aiText) },
                                     text = {
                                         LazyColumn(modifier = Modifier.heightIn(max = 300.dp)) {
@@ -586,14 +571,14 @@ fun ChatScreen() {
                                             }
                                             if (artifacts.isEmpty()) {
                                                 item {
-                                                    Text("No code or LaTeX formulas found in this chat.", color = Color(0xFF9AA0A6), fontSize = 14.sp)
+                                                    Text("No code or LaTeX formulas found in this chat.", color = colors.textGray, fontSize = 14.sp)
                                                 }
                                             }
                                         }
                                     },
                                     confirmButton = {
                                         TextButton(onClick = { showArtifactsDialog = false }) {
-                                            Text("Close", color = Color(0xFF8AB4F8))
+                                            Text("Close", color = colors.primary)
                                         }
                                     }
                                 )
@@ -716,7 +701,7 @@ fun ChatScreen() {
                             }
 
                             val reversedMessages = state.messages.reversed()
-                            itemsIndexed(reversedMessages) { reversedIndex, msg ->
+                            itemsIndexed(reversedMessages, key = { _, msg -> msg.id }) { reversedIndex, msg ->
                                 val originalIndex = state.messages.lastIndex - reversedIndex
                                 val isLatest = originalIndex == state.messages.lastIndex
                                 val showSuggestions = isLatest && !msg.isUser && !state.isGenerating && state.inputText.isEmpty()
@@ -783,20 +768,78 @@ fun ChatScreen() {
                 }
             }
         }
+
+        // Settings Screen with slide + fade transition
+        AnimatedVisibility(
+            visible = showSettings && !showSignIn,
+            enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
+            exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut(),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            SettingsScreen(
+                viewModel = viewModel,
+                colors = colors,
+                onBack = { showSettings = false },
+                onOpenSignIn = { showSignIn = true },
+                onClearAll = { viewModel.clearAllConversations() }
+            )
+        }
+
+        // Sign In Screen with slide + fade transition
+        AnimatedVisibility(
+            visible = !isLoggedIn || showSignIn,
+            enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
+            exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut(),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            SignInScreen(
+                viewModel = viewModel,
+                colors = colors,
+                onBack = { 
+                    if (isLoggedIn) {
+                        showSignIn = false 
+                    }
+                },
+                canGoBack = isLoggedIn
+            )
+        }
     }
 }
 
 @Composable
 fun GeneratingIndicator(colors: AppColors) {
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-    val alphaAnim by infiniteTransition.animateFloat(
+    
+    val alpha1 by infiniteTransition.animateFloat(
         initialValue = 0.3f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
             animation = tween(600, easing = LinearEasing),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "alpha"
+        label = "alpha1"
+    )
+    
+    val alpha2 by infiniteTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(600, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+            initialStartOffset = androidx.compose.animation.core.StartOffset(200)
+        ),
+        label = "alpha2"
+    )
+    
+    val alpha3 by infiniteTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(600, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+            initialStartOffset = androidx.compose.animation.core.StartOffset(400)
+        ),
+        label = "alpha3"
     )
 
     Row(
@@ -813,9 +856,9 @@ fun GeneratingIndicator(colors: AppColors) {
                 .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.size(8.dp).background(colors.aiText, CircleShape).alpha(alphaAnim))
-                Box(modifier = Modifier.size(8.dp).background(colors.aiText, CircleShape).alpha(alphaAnim))
-                Box(modifier = Modifier.size(8.dp).background(colors.aiText, CircleShape).alpha(alphaAnim))
+                Box(modifier = Modifier.size(8.dp).background(colors.aiText, CircleShape).alpha(alpha1))
+                Box(modifier = Modifier.size(8.dp).background(colors.aiText, CircleShape).alpha(alpha2))
+                Box(modifier = Modifier.size(8.dp).background(colors.aiText, CircleShape).alpha(alpha3))
             }
         }
     }
@@ -1186,21 +1229,21 @@ fun CodeBlockCard(
             .fillMaxWidth()
             .padding(vertical = 8.dp)
             .clip(RoundedCornerShape(24.dp))
-            .background(Color(0xFF131519))
-            .border(1.dp, Color(0xFF2C323C), RoundedCornerShape(24.dp))
+            .background(colors.bubbleGray)
+            .border(1.dp, colors.borderGray, RoundedCornerShape(24.dp))
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0xFF1A1D23))
+                    .background(colors.inputBg)
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = language.ifEmpty { "code" },
-                    color = Color(0xFF9AA0A6),
+                    color = colors.textGray,
                     fontSize = 12.sp,
                     fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
                     fontWeight = FontWeight.Medium
@@ -1215,7 +1258,7 @@ fun CodeBlockCard(
                     Icon(
                         imageVector = if (copied) Icons.Outlined.Done else Icons.Outlined.ContentCopy,
                         contentDescription = "Copy code",
-                        tint = if (copied) Color(0xFF81C995) else Color(0xFF9AA0A6),
+                        tint = if (copied) colors.primary else colors.textGray,
                         modifier = Modifier.size(16.dp)
                     )
                 }
@@ -1233,7 +1276,8 @@ fun CodeBlockCard(
                         .padding(16.dp),
                     fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
                     fontSize = 13.sp,
-                    lineHeight = 20.sp
+                    lineHeight = 20.sp,
+                    color = colors.aiText
                 )
             }
         }
@@ -1253,7 +1297,11 @@ fun FormulaCard(
         .removePrefix("\\(").removeSuffix("\\)")
         .trim()
 
-    val htmlContent = remember(cleanFormula) {
+    val isDark = colors.isDark
+    val bgColorHex = if (isDark) "#131519" else "#F5F5F5"
+    val textColorHex = if (isDark) "#E8EAED" else "#1F1F1F"
+
+    val htmlContent = remember(cleanFormula, isDark) {
         """
         <!DOCTYPE html>
         <html>
@@ -1263,8 +1311,8 @@ fun FormulaCard(
             <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
             <style>
                 body {
-                    background-color: #131519;
-                    color: #E8EAED;
+                    background-color: $bgColorHex;
+                    color: $textColorHex;
                     font-family: sans-serif;
                     display: flex;
                     justify-content: center;
@@ -1304,21 +1352,21 @@ fun FormulaCard(
             .fillMaxWidth()
             .padding(vertical = 8.dp)
             .clip(RoundedCornerShape(24.dp))
-            .background(Color(0xFF131519))
-            .border(1.dp, Color(0xFF2C323C), RoundedCornerShape(24.dp))
+            .background(colors.bubbleGray)
+            .border(1.dp, colors.borderGray, RoundedCornerShape(24.dp))
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0xFF1A1D23))
+                    .background(colors.inputBg)
                     .padding(horizontal = 16.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = "LaTeX Formula",
-                    color = Color(0xFF9AA0A6),
+                    color = colors.textGray,
                     fontSize = 11.sp,
                     fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
                     fontWeight = FontWeight.Medium
@@ -1333,7 +1381,7 @@ fun FormulaCard(
                     Icon(
                         imageVector = if (copied) Icons.Outlined.Done else Icons.Outlined.ContentCopy,
                         contentDescription = "Copy formula",
-                        tint = if (copied) Color(0xFF81C995) else Color(0xFF9AA0A6),
+                        tint = if (copied) colors.primary else colors.textGray,
                         modifier = Modifier.size(14.dp)
                     )
                 }
@@ -1452,6 +1500,7 @@ fun ModelSelectorDropdown(
                 secretCodeInput = ""
                 codeError = false
             },
+            modifier = Modifier.shadow(8.dp, shape = AlertDialogDefaults.shape),
             title = { Text("Model Restricted", color = colors.aiText) },
             text = {
                 Column(modifier = Modifier.fillMaxWidth()) {
@@ -1490,7 +1539,7 @@ fun ModelSelectorDropdown(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        if (secretCodeInput.trim() == "1976") {
+                        if (secretCodeInput.trim() == ChatViewModel.MILO_MAX_UNLOCK_CODE) {
                             onModelSelected("Milo-max", secretCodeInput.trim())
                             showSecurityDialog = false
                             secretCodeInput = ""
@@ -1639,7 +1688,11 @@ fun InputBar(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp)
-            .defaultMinSize(minHeight = 52.dp)
+            .shadow(
+                elevation = 6.dp,
+                shape = RoundedCornerShape(26.dp),
+                clip = false
+            )
             .background(colors.inputBg, shape = RoundedCornerShape(26.dp))
             .padding(horizontal = 16.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center
@@ -1699,8 +1752,8 @@ fun InputBar(
                         expanded = showAttachMenu,
                         onDismissRequest = { showAttachMenu = false },
                         modifier = Modifier
-                            .background(Color(0xFF181818), RoundedCornerShape(24.dp))
-                            .border(1.dp, Color(0xFF2C323C), RoundedCornerShape(24.dp))
+                            .background(colors.plusBg, RoundedCornerShape(24.dp))
+                            .border(1.dp, colors.borderGray, RoundedCornerShape(24.dp))
                             .padding(4.dp)
                     ) {
                         DropdownMenuItem(
@@ -1962,80 +2015,83 @@ fun SidebarContent(
                 if (filtered.isEmpty()) {
                     item {
                         Text(
-                            "No conversations yet",
+                            text = if (conversations.isEmpty()) "No conversations yet" else "No results for '$searchQuery'",
                             color = colors.textGray,
                             fontSize = 14.sp,
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp)
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp, horizontal = 8.dp)
                         )
                     }
                 } else {
                     items(filtered, key = { it.id }) { item ->
                         var showRowMenu by remember { mutableStateOf(false) }
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .clickable { onLoadChat(item.id) }
-                                .padding(horizontal = 12.dp, vertical = 10.dp)
-                        ) {
-                            if (item.isPinned) {
-                                Icon(Icons.Outlined.PushPin, contentDescription = "Pinned", tint = colors.textGray, modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                            }
-                            Text(
-                                text = item.title,
-                                color = colors.aiText,
-                                fontSize = 15.sp,
-                                modifier = Modifier.weight(1f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Box(
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier
-                                    .size(32.dp)
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
                                     .clip(RoundedCornerShape(16.dp))
-                                    .background(colors.bubbleGray)
-                                    .clickable { showRowMenu = true },
-                                contentAlignment = Alignment.Center
+                                    .clickable { onLoadChat(item.id) }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.MoreVert,
-                                    contentDescription = "Chat options",
-                                    tint = colors.aiText,
-                                    modifier = Modifier.size(16.dp)
+                                if (item.isPinned) {
+                                    Icon(Icons.Outlined.PushPin, contentDescription = "Pinned", tint = colors.textGray, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                }
+                                Text(
+                                    text = item.title,
+                                    color = colors.aiText,
+                                    fontSize = 15.sp,
+                                    modifier = Modifier.weight(1f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
-
-                                DropdownMenu(
-                                    expanded = showRowMenu,
-                                    onDismissRequest = { showRowMenu = false },
-                                    modifier = Modifier.background(colors.inputBg)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(colors.bubbleGray)
+                                        .clickable { showRowMenu = true },
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    DropdownMenuItem(
-                                        text = { Text(if (item.isPinned) "Unpin" else "Pin", color = colors.aiText) },
-                                        onClick = {
-                                            onPinChat(item.id, item.isPinned)
-                                            showRowMenu = false
-                                        }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("Rename", color = colors.aiText) },
-                                        onClick = {
-                                            newTitleInput = item.title
-                                            chatToRename = item
-                                            showRowMenu = false
-                                        }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("Delete", color = Color(0xFFFF6B6B)) },
-                                        onClick = {
-                                            chatToDelete = item.id
-                                            showRowMenu = false
-                                        }
+                                    Icon(
+                                        imageVector = Icons.Outlined.MoreVert,
+                                        contentDescription = "Chat options",
+                                        tint = colors.aiText,
+                                        modifier = Modifier.size(16.dp)
                                     )
                                 }
+                            }
+
+                            DropdownMenu(
+                                expanded = showRowMenu,
+                                onDismissRequest = { showRowMenu = false },
+                                modifier = Modifier.background(colors.inputBg),
+                                offset = androidx.compose.ui.unit.DpOffset(x = 180.dp, y = 0.dp)
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(if (item.isPinned) "Unpin" else "Pin", color = colors.aiText) },
+                                    onClick = {
+                                        onPinChat(item.id, item.isPinned)
+                                        showRowMenu = false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Rename", color = colors.aiText) },
+                                    onClick = {
+                                        newTitleInput = item.title
+                                        chatToRename = item
+                                        showRowMenu = false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Delete", color = Color(0xFFFF6B6B)) },
+                                    onClick = {
+                                        chatToDelete = item.id
+                                        showRowMenu = false
+                                    }
+                                )
                             }
                         }
                     }
@@ -2088,11 +2144,14 @@ fun SettingsScreen(
     onOpenSignIn: () -> Unit,
     onClearAll: () -> Unit
 ) {
+    BackHandler(enabled = true) {
+        onBack()
+    }
+
     var showClearDialog by remember { mutableStateOf(false) }
     
     val theme by viewModel.theme.collectAsState()
     val textSize by viewModel.textSize.collectAsState()
-    val notificationsEnabled by viewModel.notificationsEnabled.collectAsState()
     val hapticFeedback by viewModel.hapticFeedback.collectAsState()
     val isLoggedIn by viewModel.isLoggedIn.collectAsState()
     val userName by viewModel.userName.collectAsState()
@@ -2108,9 +2167,31 @@ fun SettingsScreen(
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
 
+    val avatarPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                val inputStream = context.contentResolver.openInputStream(uri)
+                if (inputStream != null) {
+                    val file = File(context.filesDir, "avatar_${System.currentTimeMillis()}.jpg")
+                    FileOutputStream(file).use { outputStream ->
+                        inputStream.copyTo(outputStream)
+                    }
+                    viewModel.setUserAvatar(Uri.fromFile(file).toString())
+                    Toast.makeText(context, "Profile picture updated", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                Toast.makeText(context, "Failed to update profile picture", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     if (showClearDialog) {
         AlertDialog(
             onDismissRequest = { showClearDialog = false },
+            modifier = Modifier.shadow(8.dp, shape = AlertDialogDefaults.shape),
             title = { Text("Clear all conversations", color = colors.aiText) },
             text = { Text("Are you sure you want to delete all conversations? This cannot be undone.", color = colors.textGray) },
             confirmButton = {
@@ -2133,6 +2214,7 @@ fun SettingsScreen(
     if (showNameDialog) {
         AlertDialog(
             onDismissRequest = { showNameDialog = false },
+            modifier = Modifier.shadow(8.dp, shape = AlertDialogDefaults.shape),
             title = { Text("Edit Display Name", color = colors.aiText) },
             text = {
                 OutlinedTextField(
@@ -2169,34 +2251,90 @@ fun SettingsScreen(
     if (showAvatarDialog) {
         AlertDialog(
             onDismissRequest = { showAvatarDialog = false },
+            modifier = Modifier.shadow(8.dp, shape = AlertDialogDefaults.shape),
             title = { Text("Choose Avatar", color = colors.aiText) },
             text = {
-                val avatars = listOf("default", "robot", "star", "heart", "bolt", "face")
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
-                    modifier = Modifier.height(200.dp),
-                    contentPadding = PaddingValues(8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    items(avatars) { avatar ->
-                        Box(
+                    // Choose from gallery button
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 16.dp)
+                            .clickable {
+                                avatarPickerLauncher.launch("image/*")
+                                showAvatarDialog = false
+                            },
+                        shape = RoundedCornerShape(12.dp),
+                        color = colors.inputBg,
+                        border = BorderStroke(1.dp, colors.borderGray.copy(alpha = 0.5f))
+                    ) {
+                        Row(
                             modifier = Modifier
-                                .size(60.dp)
-                                .clip(CircleShape)
-                                .background(if (userAvatar == avatar) colors.aiText.copy(alpha = 0.2f) else colors.inputBg)
-                                .clickable { 
-                                    viewModel.setUserAvatar(avatar)
-                                    showAvatarDialog = false
-                                },
-                            contentAlignment = Alignment.Center
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
                         ) {
-                            AvatarIcon(avatar, colors, Modifier.size(32.dp))
+                            Icon(
+                                Icons.Outlined.PhotoLibrary,
+                                contentDescription = null,
+                                tint = colors.aiText,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "Choose from gallery",
+                                color = colors.aiText,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+
+                    Text(
+                        "Or select an icon:",
+                        color = colors.textGray,
+                        fontSize = 12.sp,
+                        modifier = Modifier
+                            .align(Alignment.Start)
+                            .padding(bottom = 8.dp)
+                    )
+
+                    val avatars = listOf("default", "robot", "star", "heart", "bolt", "face")
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(3),
+                        modifier = Modifier.height(140.dp),
+                        contentPadding = PaddingValues(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(avatars) { avatar ->
+                            Box(
+                                modifier = Modifier
+                                    .size(60.dp)
+                                    .clip(CircleShape)
+                                    .background(if (userAvatar == avatar) colors.aiText.copy(alpha = 0.2f) else colors.inputBg)
+                                    .clickable { 
+                                        viewModel.setUserAvatar(avatar)
+                                        showAvatarDialog = false
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                AvatarIcon(avatar, colors, Modifier.size(32.dp))
+                            }
                         }
                     }
                 }
             },
             confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showAvatarDialog = false }) {
+                    Text("Cancel", color = colors.aiText)
+                }
+            },
             containerColor = colors.bubbleGray
         )
     }
@@ -2264,6 +2402,34 @@ fun SettingsScreen(
                             Icon(Icons.Outlined.Edit, contentDescription = "Edit name", tint = colors.iconGray, modifier = Modifier.size(20.dp))
                         }
                     }
+
+                    HorizontalDivider(color = colors.borderGray.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 4.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                if (hapticFeedback) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                viewModel.signOut()
+                                onBack()
+                            }
+                            .padding(vertical = 12.dp, horizontal = 4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.ExitToApp,
+                            contentDescription = "Sign Out",
+                            tint = Color(0xFFFF6B6B),
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(
+                            text = "Sign Out",
+                            color = Color(0xFFFF6B6B),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
                 }
             }
 
@@ -2280,14 +2446,9 @@ fun SettingsScreen(
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     val themeOptions = listOf(
-                        Triple("Follow system", Color.Gray, "Auto-switches based on device setting"),
-                        Triple("Midnight Blue", Color(0xFF3A86FF), "Deep space aesthetic with cyan accents"),
-                        Triple("Forest Green", Color(0xFF2ECC71), "Nature-inspired deep green"),
-                        Triple("Sunset Orange", Color(0xFFE67E22), "Warm evening glow"),
-                        Triple("Rose Gold", Color(0xFFE91E63), "Elegant dark pink palette"),
+                        Triple("Follow System", Color.Gray, "Auto-switches based on device setting"),
                         Triple("Pure black (AMOLED)", Color(0xFF000000), "Infinite contrast for OLED screens"),
-                        Triple("Dark gray", Color(0xFF121212), "Standard material dark"),
-                        Triple("Charcoal / Medium gray", Color(0xFF1C1C1E), "Softer dark mode experience"),
+                        Triple("Midnight Blue", Color(0xFF4A9EFF), "Deep space aesthetic with modern blue accents"),
                         Triple("Soft Light Gray", Color(0xFFEDEDED), "Clean and bright"),
                         Triple("Pure white", Color(0xFFFFFFFF), "Maximum brightness")
                     )
@@ -2324,31 +2485,6 @@ fun SettingsScreen(
                             }
                         }
                     }
-                }
-            }
-
-            // --- SECTION 3: NOTIFICATIONS ---
-            SettingsSectionCard(title = "Notifications", colors = colors) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Outlined.NotificationsNone, contentDescription = null, tint = colors.iconGray, modifier = Modifier.size(24.dp))
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Column {
-                            Text("Enable Notifications", color = colors.aiText, fontSize = 16.sp, fontWeight = FontWeight.Medium)
-                            Text("Receive message alerts", color = colors.textGray, fontSize = 13.sp)
-                        }
-                    }
-                    Switch(
-                        checked = notificationsEnabled, 
-                        onCheckedChange = { 
-                            if (hapticFeedback) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            viewModel.setNotificationsEnabled(it) 
-                        }
-                    )
                 }
             }
 
@@ -2460,6 +2596,7 @@ fun SettingsSectionCard(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
             color = colors.inputBg,
+            shadowElevation = 3.dp,
             border = BorderStroke(1.dp, colors.borderGray.copy(alpha = 0.5f))
         ) {
             Column(
@@ -2477,9 +2614,14 @@ fun SettingsSectionCard(
 fun SignInScreen(
     viewModel: ChatViewModel,
     colors: AppColors,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    canGoBack: Boolean = true
 ) {
-    var selectedTab by remember { mutableStateOf(0) } // 0: Google, 1: Email, 2: Phone
+    BackHandler(enabled = canGoBack) {
+        onBack()
+    }
+
+    var selectedTab by remember { mutableStateOf(0) } // 0: Email, 1: Phone
     var emailInput by remember { mutableStateOf("") }
     var passwordInput by remember { mutableStateOf("") }
     var nameInput by remember { mutableStateOf("") }
@@ -2488,10 +2630,21 @@ fun SignInScreen(
     var phoneInput by remember { mutableStateOf("") }
     var otpInput by remember { mutableStateOf("") }
     var otpSent by remember { mutableStateOf(false) }
+    var verificationIdState by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val hapticEnabled by viewModel.hapticFeedback.collectAsState()
+
+    val auth = remember { 
+        try { 
+            com.google.firebase.auth.FirebaseAuth.getInstance() 
+        } catch (e: Exception) { 
+            null 
+        } 
+    }
+    val authManager = remember { auth?.let { com.example.AuthManager(it) } }
 
     Scaffold(
         containerColor = colors.background,
@@ -2499,8 +2652,10 @@ fun SignInScreen(
             CenterAlignedTopAppBar(
                 title = { Text(if (isSignUp) "Create Account" else "Sign In", color = colors.aiText, fontSize = 18.sp, fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
-                    IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
-                        Icon(Icons.Outlined.ArrowBack, contentDescription = "Go back", tint = colors.aiText)
+                    if (canGoBack) {
+                        IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
+                            Icon(Icons.Outlined.ArrowBack, contentDescription = "Go back", tint = colors.aiText)
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.Transparent)
@@ -2512,23 +2667,23 @@ fun SignInScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
                 .verticalScroll(rememberScrollState())
-                .padding(24.dp),
+                .padding(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(20.dp)
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             Box(
                 modifier = Modifier
-                    .size(72.dp)
+                    .size(64.dp)
                     .background(colors.bubbleGray, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Outlined.Lock, contentDescription = null, tint = colors.aiText, modifier = Modifier.size(36.dp))
+                Icon(Icons.Outlined.Lock, contentDescription = null, tint = colors.aiText, modifier = Modifier.size(28.dp))
             }
-            Text("Welcome to Milo AI", color = colors.aiText, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            Text("Welcome to Milo AI", color = colors.aiText, fontSize = 22.sp, fontWeight = FontWeight.Bold)
             Text("Sign in or create an account to sync conversations across your devices.", color = colors.textGray, fontSize = 14.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
             // Method Selector Tabs
             Row(
@@ -2538,7 +2693,7 @@ fun SignInScreen(
                     .padding(4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                listOf("Google", "Email", "Phone").forEachIndexed { index, title ->
+                listOf("Email", "Phone").forEachIndexed { index, title ->
                     val selected = selectedTab == index
                     Box(
                         modifier = Modifier
@@ -2564,145 +2719,42 @@ fun SignInScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            when (selectedTab) {
-                0 -> { // Google Sign-In
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        Button(
-                            onClick = {
-                                if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                viewModel.signInWithGoogle("user.google@gmail.com", "Google User")
-                                Toast.makeText(context, "Successfully signed in with Google!", Toast.LENGTH_SHORT).show()
-                                onBack()
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(52.dp),
-                            shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = colors.inputBg),
-                            border = BorderStroke(1.dp, colors.borderGray)
-                        ) {
-                            Icon(Icons.Outlined.AccountCircle, contentDescription = null, tint = colors.aiText, modifier = Modifier.size(24.dp))
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text("Continue with Google", color = colors.aiText, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                        }
-                        Text("Securely authenticate using your Google Credentials.", color = colors.textGray, fontSize = 13.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                    }
+            if (isLoading) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(color = colors.aiText)
                 }
-                1 -> { // Email & Password
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        if (isSignUp) {
-                            OutlinedTextField(
-                                value = nameInput,
-                                onValueChange = { nameInput = it },
-                                label = { Text("Full Name", color = colors.textGray) },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = colors.aiText,
-                                    unfocusedBorderColor = colors.borderGray,
-                                    focusedTextColor = colors.aiText,
-                                    unfocusedTextColor = colors.aiText
-                                ),
-                                singleLine = true
-                            )
-                        }
-                        OutlinedTextField(
-                            value = emailInput,
-                            onValueChange = { emailInput = it },
-                            label = { Text("Email Address", color = colors.textGray) },
+            } else {
+                when (selectedTab) {
+                    0 -> { // Email & Password
+                        Column(
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = colors.aiText,
-                                unfocusedBorderColor = colors.borderGray,
-                                focusedTextColor = colors.aiText,
-                                unfocusedTextColor = colors.aiText
-                            ),
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Email)
-                        )
-                        OutlinedTextField(
-                            value = passwordInput,
-                            onValueChange = { passwordInput = it },
-                            label = { Text("Password", color = colors.textGray) },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = colors.aiText,
-                                unfocusedBorderColor = colors.borderGray,
-                                focusedTextColor = colors.aiText,
-                                unfocusedTextColor = colors.aiText
-                            ),
-                            singleLine = true,
-                            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                            keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password)
-                        )
-
-                        Button(
-                            onClick = {
-                                if (emailInput.isBlank() || passwordInput.isBlank()) {
-                                    Toast.makeText(context, "Please enter email and password", Toast.LENGTH_SHORT).show()
-                                    return@Button
-                                }
-                                if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                viewModel.signInWithEmail(emailInput, nameInput, isSignUp)
-                                Toast.makeText(context, if (isSignUp) "Account created successfully!" else "Signed in successfully!", Toast.LENGTH_SHORT).show()
-                                onBack()
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(52.dp),
-                            shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = colors.aiText)
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
-                            Text(if (isSignUp) "Create Account" else "Sign In", color = colors.background, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        }
-
-                        TextButton(
-                            onClick = { isSignUp = !isSignUp },
-                            modifier = Modifier.align(Alignment.CenterHorizontally)
-                        ) {
-                            Text(
-                                text = if (isSignUp) "Already have an account? Sign In" else "Don't have an account? Create one",
-                                color = colors.aiText,
-                                fontSize = 14.sp
-                            )
-                        }
-                    }
-                }
-                2 -> { // Phone Number
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = phoneInput,
-                            onValueChange = { phoneInput = it },
-                            label = { Text("Phone Number (e.g. +1 555-0199)", color = colors.textGray) },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = colors.aiText,
-                                unfocusedBorderColor = colors.borderGray,
-                                focusedTextColor = colors.aiText,
-                                unfocusedTextColor = colors.aiText
-                            ),
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Phone)
-                        )
-
-                        if (otpSent) {
+                            if (isSignUp) {
+                                OutlinedTextField(
+                                    value = nameInput,
+                                    onValueChange = { nameInput = it },
+                                    label = { Text("Full Name", color = colors.textGray) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = colors.aiText,
+                                        unfocusedBorderColor = colors.borderGray,
+                                        focusedTextColor = colors.aiText,
+                                        unfocusedTextColor = colors.aiText
+                                    ),
+                                    singleLine = true
+                                )
+                            }
                             OutlinedTextField(
-                                value = otpInput,
-                                onValueChange = { otpInput = it },
-                                label = { Text("Enter 6-Digit OTP Code", color = colors.textGray) },
+                                value = emailInput,
+                                onValueChange = { emailInput = it },
+                                label = { Text("Email Address", color = colors.textGray) },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(12.dp),
                                 colors = OutlinedTextFieldDefaults.colors(
@@ -2712,40 +2764,268 @@ fun SignInScreen(
                                     unfocusedTextColor = colors.aiText
                                 ),
                                 singleLine = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number)
+                                keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Email)
                             )
-                        }
+                            OutlinedTextField(
+                                value = passwordInput,
+                                onValueChange = { passwordInput = it },
+                                label = { Text("Password", color = colors.textGray) },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = colors.aiText,
+                                    unfocusedBorderColor = colors.borderGray,
+                                    focusedTextColor = colors.aiText,
+                                    unfocusedTextColor = colors.aiText
+                                ),
+                                singleLine = true,
+                                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                                keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password)
+                            )
 
-                        Button(
-                            onClick = {
-                                if (phoneInput.isBlank()) {
-                                    Toast.makeText(context, "Please enter a phone number", Toast.LENGTH_SHORT).show()
-                                    return@Button
-                                }
-                                if (!otpSent) {
-                                    otpSent = true
-                                    Toast.makeText(context, "OTP Code sent to $phoneInput", Toast.LENGTH_SHORT).show()
-                                } else {
-                                    if (otpInput.length < 4) {
-                                        Toast.makeText(context, "Please enter the valid OTP code", Toast.LENGTH_SHORT).show()
+                            Button(
+                                onClick = {
+                                    if (emailInput.isBlank() || passwordInput.isBlank()) {
+                                        Toast.makeText(context, "Please enter email and password", Toast.LENGTH_SHORT).show()
                                         return@Button
                                     }
                                     if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    viewModel.signInWithPhone(phoneInput)
-                                    Toast.makeText(context, "Phone verification successful!", Toast.LENGTH_SHORT).show()
-                                    onBack()
-                                }
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(52.dp),
-                            shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = colors.aiText)
+                                    
+                                    if (authManager != null && auth != null) {
+                                        isLoading = true
+                                        if (isSignUp) {
+                                            authManager.signUpWithEmail(emailInput, passwordInput, {
+                                                isLoading = false
+                                                viewModel.updateWithFirebaseUser(auth.currentUser)
+                                                // Save custom display name if provided
+                                                if (nameInput.isNotBlank()) {
+                                                    val profileUpdates = com.google.firebase.auth.userProfileChangeRequest {
+                                                        displayName = nameInput
+                                                    }
+                                                    auth.currentUser?.updateProfile(profileUpdates)?.addOnCompleteListener {
+                                                        viewModel.updateWithFirebaseUser(auth.currentUser)
+                                                    }
+                                                }
+                                                Toast.makeText(context, "Account created successfully!", Toast.LENGTH_SHORT).show()
+                                                onBack()
+                                            }, { error ->
+                                                isLoading = false
+                                                Toast.makeText(context, "Sign Up Failed: $error", Toast.LENGTH_SHORT).show()
+                                            })
+                                        } else {
+                                            authManager.signInWithEmail(emailInput, passwordInput, {
+                                                isLoading = false
+                                                viewModel.updateWithFirebaseUser(auth.currentUser)
+                                                Toast.makeText(context, "Signed in successfully!", Toast.LENGTH_SHORT).show()
+                                                onBack()
+                                            }, { error ->
+                                                isLoading = false
+                                                Toast.makeText(context, "Sign In Failed: $error", Toast.LENGTH_SHORT).show()
+                                            })
+                                        }
+                                    } else {
+                                        viewModel.signInWithEmail(emailInput, nameInput, isSignUp)
+                                        Toast.makeText(context, if (isSignUp) "Account created (Simulated)" else "Signed in (Simulated)", Toast.LENGTH_SHORT).show()
+                                        onBack()
+                                    }
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(52.dp),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = colors.aiText)
+                            ) {
+                                Text(if (isSignUp) "Create Account" else "Sign In", color = colors.background, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            }
+
+                            TextButton(
+                                onClick = { isSignUp = !isSignUp },
+                                modifier = Modifier.align(Alignment.CenterHorizontally)
+                            ) {
+                                Text(
+                                    text = if (isSignUp) "Already have an account? Sign In" else "Don't have an account? Create one",
+                                    color = colors.aiText,
+                                    fontSize = 14.sp
+                                )
+                            }
+                        }
+                    }
+                    1 -> { // Phone Number
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
-                            Text(if (!otpSent) "Send Verification Code" else "Verify & Sign In", color = colors.background, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            OutlinedTextField(
+                                value = phoneInput,
+                                onValueChange = { phoneInput = it },
+                                label = { Text("Phone Number (e.g. +1 555-0199)", color = colors.textGray) },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = colors.aiText,
+                                    unfocusedBorderColor = colors.borderGray,
+                                    focusedTextColor = colors.aiText,
+                                    unfocusedTextColor = colors.aiText
+                                ),
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Phone)
+                            )
+
+                            if (otpSent) {
+                                OutlinedTextField(
+                                    value = otpInput,
+                                    onValueChange = { otpInput = it },
+                                    label = { Text("Enter 6-Digit OTP Code", color = colors.textGray) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = colors.aiText,
+                                        unfocusedBorderColor = colors.borderGray,
+                                        focusedTextColor = colors.aiText,
+                                        unfocusedTextColor = colors.aiText
+                                    ),
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number)
+                                )
+                            }
+
+                            Button(
+                                onClick = {
+                                    if (phoneInput.isBlank()) {
+                                        Toast.makeText(context, "Please enter a phone number", Toast.LENGTH_SHORT).show()
+                                        return@Button
+                                    }
+                                    if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+
+                                    if (authManager != null && auth != null) {
+                                        val activity = context as? Activity
+                                        if (activity != null) {
+                                            if (!otpSent) {
+                                                isLoading = true
+                                                val callbacks = object : com.google.firebase.auth.PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
+                                                    override fun onVerificationCompleted(credential: com.google.firebase.auth.PhoneAuthCredential) {
+                                                        authManager.signInWithCredential(credential, {
+                                                            isLoading = false
+                                                            viewModel.updateWithFirebaseUser(auth.currentUser)
+                                                            Toast.makeText(context, "Phone verification successful!", Toast.LENGTH_SHORT).show()
+                                                            onBack()
+                                                        }, { error ->
+                                                            isLoading = false
+                                                            Toast.makeText(context, "Verification Failed: $error", Toast.LENGTH_SHORT).show()
+                                                        })
+                                                    }
+
+                                                    override fun onVerificationFailed(e: com.google.firebase.FirebaseException) {
+                                                        isLoading = false
+                                                        Toast.makeText(context, "Phone Verification Failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                                                    }
+
+                                                    override fun onCodeSent(verificationId: String, token: com.google.firebase.auth.PhoneAuthProvider.ForceResendingToken) {
+                                                        isLoading = false
+                                                        verificationIdState = verificationId
+                                                        otpSent = true
+                                                        Toast.makeText(context, "Verification code sent to $phoneInput", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                }
+                                                authManager.sendVerificationCode(phoneInput, activity, callbacks)
+                                            } else {
+                                                if (otpInput.isBlank()) {
+                                                    Toast.makeText(context, "Please enter the OTP code", Toast.LENGTH_SHORT).show()
+                                                    return@Button
+                                                }
+                                                isLoading = true
+                                                val credential = com.google.firebase.auth.PhoneAuthProvider.getCredential(verificationIdState, otpInput)
+                                                authManager.signInWithCredential(credential, {
+                                                    isLoading = false
+                                                    viewModel.updateWithFirebaseUser(auth.currentUser)
+                                                    Toast.makeText(context, "Phone Sign-In Successful!", Toast.LENGTH_SHORT).show()
+                                                    onBack()
+                                                }, { error ->
+                                                    isLoading = false
+                                                    Toast.makeText(context, "Invalid verification code: $error", Toast.LENGTH_SHORT).show()
+                                                })
+                                            }
+                                        } else {
+                                            Toast.makeText(context, "Activity context is required for phone verification", Toast.LENGTH_SHORT).show()
+                                        }
+                                    } else {
+                                        if (!otpSent) {
+                                            otpSent = true
+                                            Toast.makeText(context, "OTP Code sent to $phoneInput (simulated)", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            if (otpInput.length < 4) {
+                                                Toast.makeText(context, "Please enter a valid OTP code", Toast.LENGTH_SHORT).show()
+                                                return@Button
+                                            }
+                                            viewModel.signInWithPhone(phoneInput)
+                                            Toast.makeText(context, "Phone verification successful (local)!", Toast.LENGTH_SHORT).show()
+                                            onBack()
+                                        }
+                                    }
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(52.dp),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = colors.aiText)
+                            ) {
+                                Text(if (!otpSent) "Send Verification Code" else "Verify & Sign In", color = colors.background, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                HorizontalDivider(
+                    modifier = Modifier.weight(1f),
+                    color = colors.borderGray.copy(alpha = 0.5f)
+                )
+                Text(
+                    text = "OR CONTINUE AS",
+                    color = colors.textGray,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+                HorizontalDivider(
+                    modifier = Modifier.weight(1f),
+                    color = colors.borderGray.copy(alpha = 0.5f)
+                )
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+
+            OutlinedButton(
+                onClick = {
+                    if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    viewModel.signInAsGuest()
+                    Toast.makeText(context, "Welcome! Continuing as guest.", Toast.LENGTH_SHORT).show()
+                    onBack()
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.aiText),
+                border = BorderStroke(1.dp, colors.borderGray)
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Person,
+                    contentDescription = null,
+                    tint = colors.aiText,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = "Continue as Guest",
+                    color = colors.aiText,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
         }
     }
