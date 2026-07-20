@@ -162,8 +162,7 @@ fun ImageGeneratorScreen(
     }
 
     // Detail dialog for viewing, saving, sharing, and copying a history image
-    if (selectedHistoryImage != null) {
-        val img = selectedHistoryImage!!
+    selectedHistoryImage?.let { img ->
         val formattedTime = remember(img.timestamp) {
             try {
                 val sdf = java.text.SimpleDateFormat("MMM dd, yyyy - hh:mm a", java.util.Locale.getDefault())
@@ -452,8 +451,7 @@ fun ImageGeneratorScreen(
             
             Spacer(modifier = Modifier.height(24.dp))
             
-            if (generationMode == "Edit") {
-                Text("SOURCE IMAGE", color = colors.textGray, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp, start = 4.dp))
+            Text(if (generationMode == "Edit") "SOURCE IMAGE" else "REFERENCE IMAGE (OPTIONAL)", color = colors.textGray, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp, start = 4.dp))
                 if (sourceImageUri != null) {
                     Box(modifier = Modifier.fillMaxWidth()) {
                         AsyncImage(
@@ -496,12 +494,11 @@ fun ImageGeneratorScreen(
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(Icons.Outlined.AddPhotoAlternate, contentDescription = "Select Image", tint = colors.iconGray, modifier = Modifier.size(32.dp))
                             Spacer(modifier = Modifier.height(8.dp))
-                            Text("Select source image", color = colors.textGray, fontSize = 14.sp)
+                            Text("Select image", color = colors.textGray, fontSize = 14.sp)
                         }
                     }
                 }
                 Spacer(modifier = Modifier.height(24.dp))
-            }
             
             Text("STYLE", color = colors.textGray, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp, start = 4.dp))
             LazyRow(
@@ -599,7 +596,7 @@ fun ImageGeneratorScreen(
                         isGenerating = true
                         errorMessage = null
                         imageUrl = null
-                        val reqUri = if (generationMode == "Edit") sourceImageUri else null
+                        val reqUri = sourceImageUri
                         viewModel.generateImage(prompt, selectedStyle, selectedSize, reqUri) { resultUrl, error ->
                             isGenerating = false
                             if (error != null) {
@@ -669,7 +666,7 @@ fun ImageGeneratorScreen(
                             TextButton(onClick = { 
                                 isGenerating = true
                                 errorMessage = null
-                                val reqUri = if (generationMode == "Edit") sourceImageUri else null
+                                val reqUri = sourceImageUri
                                 viewModel.generateImage(prompt, selectedStyle, selectedSize, reqUri) { resultUrl, error ->
                                     isGenerating = false
                                     if (error != null) {

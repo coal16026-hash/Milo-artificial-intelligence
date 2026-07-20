@@ -16,6 +16,7 @@ import android.speech.RecognizerIntent
 import android.widget.Toast
 import java.io.File
 import java.io.FileOutputStream
+import kotlinx.coroutines.delay
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -971,41 +972,48 @@ fun ChatScreen() {
                             keyboardController?.hide()
                         }
                 ) {
-                    if (state.messages.isEmpty()) {
-                        // Onboarding / Empty state with prompt chips
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            Text("How can Milo help you today?", color = colors.aiText, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text("Ask questions, draft text, or brainstorm ideas.", color = colors.textGray, fontSize = 14.sp)
-                            Spacer(modifier = Modifier.height(32.dp))
-                            
-                            // Suggested prompt chips
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth(0.9f)) {
-                                state.suggestions.forEach { suggestion ->
-                                    OutlinedButton(
-                                        onClick = {
-                                            if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            viewModel.onInputTextChanged(suggestion)
-                                            viewModel.sendMessage()
-                                        },
-                                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                                        shape = CircleShape,
-                                        colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.inputBg),
-                                        border = BorderStroke(1.dp, colors.borderGray)
-                                    ) {
-                                        Text(suggestion, color = colors.aiText, fontSize = 14.sp)
+                    androidx.compose.animation.AnimatedContent(
+                        targetState = state.messages.isEmpty(),
+                        label = "ChatContent",
+                        transitionSpec = {
+                            androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(300)) togetherWith androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(300))
+                        }
+                    ) { isEmpty ->
+                        if (isEmpty) {
+                            // Onboarding / Empty state with prompt chips
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Text("How can Milo help you today?", color = colors.aiText, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("Ask questions, draft text, or brainstorm ideas.", color = colors.textGray, fontSize = 14.sp)
+                                Spacer(modifier = Modifier.height(32.dp))
+                                
+                                // Suggested prompt chips
+                                Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth(0.9f)) {
+                                    state.suggestions.forEach { suggestion ->
+                                        OutlinedButton(
+                                            onClick = {
+                                                if (hapticEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                viewModel.onInputTextChanged(suggestion)
+                                                viewModel.sendMessage()
+                                            },
+                                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                                            shape = CircleShape,
+                                            colors = ButtonDefaults.outlinedButtonColors(containerColor = colors.inputBg),
+                                            border = BorderStroke(1.dp, colors.borderGray)
+                                        ) {
+                                            Text(suggestion, color = colors.aiText, fontSize = 14.sp)
+                                        }
                                     }
                                 }
                             }
-                        }
-                    } else {
-                        LazyColumn(
+                        } else {
+                            LazyColumn(
                             state = listState,
                             modifier = Modifier
                                 .fillMaxSize()
@@ -1030,7 +1038,7 @@ fun ChatScreen() {
                                 val isLatest = originalIndex == state.messages.lastIndex
                                 val showSuggestions = isLatest && !msg.isUser && !state.isGenerating && state.inputText.isEmpty()
                                 
-                                MessageBubble(
+                                Box(modifier = Modifier.animateItem()) { MessageBubble(
                                     message = msg,
                                     colors = colors,
                                     textSize = textSize,
@@ -1065,6 +1073,7 @@ fun ChatScreen() {
                                         viewModel.setBranch(parentId, idx)
                                     }
                                 )
+                                }
                             }
                         }
 
@@ -1092,6 +1101,7 @@ fun ChatScreen() {
                                 }
                             }
                         }
+                    }
                     }
                 }
             }
@@ -1164,8 +1174,8 @@ fun ChatScreen() {
         // Settings Screen with slide + fade transition
         AnimatedVisibility(
             visible = showSettings && !showSignIn && !showImageGenerator && !showVideoGenerator,
-            enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
-            exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut(),
+            enter = slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(400)) + fadeIn(animationSpec = tween(400)),
+            exit = slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(400)) + fadeOut(animationSpec = tween(400)),
             modifier = Modifier.fillMaxSize()
         ) {
             SettingsScreen(
@@ -1180,8 +1190,8 @@ fun ChatScreen() {
         // Image Generator Screen with slide + fade transition
         AnimatedVisibility(
             visible = showImageGenerator && !showSignIn,
-            enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
-            exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut(),
+            enter = slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(400)) + fadeIn(animationSpec = tween(400)),
+            exit = slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(400)) + fadeOut(animationSpec = tween(400)),
             modifier = Modifier.fillMaxSize()
         ) {
             ImageGeneratorScreen(
@@ -1194,8 +1204,8 @@ fun ChatScreen() {
         // Milo Video Generator Screen with slide + fade transition
         AnimatedVisibility(
             visible = showVideoGenerator && !showSignIn,
-            enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
-            exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut(),
+            enter = slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(400)) + fadeIn(animationSpec = tween(400)),
+            exit = slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(400)) + fadeOut(animationSpec = tween(400)),
             modifier = Modifier.fillMaxSize()
         ) {
             MiloVideoScreen(
@@ -1208,8 +1218,8 @@ fun ChatScreen() {
         // Sign In Screen with slide + fade transition
         AnimatedVisibility(
             visible = !isLoggedIn || showSignIn,
-            enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
-            exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut(),
+            enter = slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(400)) + fadeIn(animationSpec = tween(400)),
+            exit = slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(400)) + fadeOut(animationSpec = tween(400)),
             modifier = Modifier.fillMaxSize()
         ) {
             SignInScreen(
@@ -1230,36 +1240,14 @@ fun ChatScreen() {
 fun GeneratingIndicator(colors: AppColors, agentStatus: String? = null, agentLogs: List<String> = emptyList()) {
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     
-    val alpha1 by infiniteTransition.animateFloat(
-        initialValue = 0.3f,
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.4f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(600, easing = LinearEasing),
+            animation = tween(800, easing = androidx.compose.animation.core.EaseInOutSine),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "alpha1"
-    )
-    
-    val alpha2 by infiniteTransition.animateFloat(
-        initialValue = 0.3f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(600, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse,
-            initialStartOffset = androidx.compose.animation.core.StartOffset(200)
-        ),
-        label = "alpha2"
-    )
-    
-    val alpha3 by infiniteTransition.animateFloat(
-        initialValue = 0.3f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(600, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse,
-            initialStartOffset = androidx.compose.animation.core.StartOffset(400)
-        ),
-        label = "alpha3"
+        label = "pulseAlpha"
     )
 
     Column(
@@ -1275,16 +1263,16 @@ fun GeneratingIndicator(colors: AppColors, agentStatus: String? = null, agentLog
                     .background(Color(0xFF161616), RoundedCornerShape(20.dp))
                     .padding(horizontal = 12.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Box(
                     modifier = Modifier
                         .size(8.dp)
                         .background(Color(0xFF81C995), CircleShape)
-                        .alpha(alpha1)
+                        .alpha(pulseAlpha)
                 )
                 Text(
-                    text = agentStatus,
+                    text = "Milo is searching...",
                     color = Color(0xFF81C995),
                     fontSize = 12.sp,
                     fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
@@ -1332,14 +1320,23 @@ fun GeneratingIndicator(colors: AppColors, agentStatus: String? = null, agentLog
         Row(
             modifier = Modifier
                 .clip(RoundedCornerShape(16.dp))
-                .background(colors.inputBg)
-                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .background(colors.inputBg.copy(alpha = 0.6f))
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.size(8.dp).background(colors.aiText, CircleShape).alpha(alpha1))
-                Box(modifier = Modifier.size(8.dp).background(colors.aiText, CircleShape).alpha(alpha2))
-                Box(modifier = Modifier.size(8.dp).background(colors.aiText, CircleShape).alpha(alpha3))
-            }
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
+                    .background(colors.aiText, CircleShape)
+                    .alpha(pulseAlpha)
+            )
+            Text(
+                text = "Thinking...",
+                color = colors.aiText.copy(alpha = 0.8f),
+                fontSize = 14.sp,
+                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+            )
         }
     }
 }
@@ -1373,7 +1370,7 @@ fun MessageBubble(
 
     AnimatedVisibility(
         visible = true,
-        enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn()
+        enter = slideInVertically(initialOffsetY = { it / 2 }, animationSpec = tween(400)) + fadeIn(animationSpec = tween(400))
     ) {
         if (message.isUser) {
             val siblings = allConversationMessages.filter { it.parentMessageId == message.parentMessageId }
@@ -1683,6 +1680,14 @@ fun MessageBubble(
                     Spacer(modifier = Modifier.height(12.dp))
                     
                     var liked by remember { mutableStateOf<Boolean?>(null) }
+                    var showThankYou by remember { mutableStateOf(false) }
+
+                    LaunchedEffect(showThankYou) {
+                        if (showThankYou) {
+                            delay(2000)
+                            showThankYou = false
+                        }
+                    }
                     
                     AnimatedVisibility(visible = !isError && message.text.isNotEmpty()) {
                         Row(
@@ -1697,14 +1702,23 @@ fun MessageBubble(
                                 IconButton(onClick = { onCopy() }, modifier = Modifier.size(36.dp)) {
                                     Icon(Icons.Outlined.ContentCopy, contentDescription = "Copy text", tint = colors.iconGray, modifier = Modifier.size(18.dp))
                                 }
-                                IconButton(onClick = { liked = if (liked == true) null else true }, modifier = Modifier.size(36.dp)) {
+                                IconButton(onClick = { 
+                                    liked = if (liked == true) null else true
+                                    if (liked != null) showThankYou = true
+                                }, modifier = Modifier.size(36.dp)) {
                                     Icon(Icons.Outlined.ThumbUp, contentDescription = "Thumbs up", tint = if (liked == true) colors.aiText else colors.iconGray, modifier = Modifier.size(18.dp))
                                 }
-                                IconButton(onClick = { liked = if (liked == false) null else false }, modifier = Modifier.size(36.dp)) {
+                                IconButton(onClick = { 
+                                    liked = if (liked == false) null else false
+                                    if (liked != null) showThankYou = true
+                                }, modifier = Modifier.size(36.dp)) {
                                     Icon(Icons.Outlined.ThumbDown, contentDescription = "Thumbs down", tint = if (liked == false) colors.aiText else colors.iconGray, modifier = Modifier.size(18.dp))
                                 }
                                 IconButton(onClick = { onRegenerate() }, modifier = Modifier.size(36.dp)) {
                                     Icon(Icons.Outlined.Refresh, contentDescription = "Regenerate response", tint = colors.iconGray, modifier = Modifier.size(18.dp))
+                                }
+                                AnimatedVisibility(visible = showThankYou) {
+                                    Text("Thank you for your feedback!", color = colors.aiText, fontSize = 12.sp)
                                 }
                             }
 
@@ -2136,10 +2150,9 @@ fun ModelSelectorDropdown(
     var codeError by remember { mutableStateOf(false) }
 
     val models = listOf(
-        Triple("Milo 2.5 flash-non reasoning", "Milo efficient everyday model", "Fast"),
-        Triple("Milo 2.5 flash-reasoning", "Milo reasoning model", "Reasoning"),
+        Triple("Milo 2.5 flash", "Milo efficient everyday model", "Fast"),
         Triple("Milo 2.5 pro", "Milo max reasoning model", "Pro"),
-        Triple("Milo-max", "Milo maximum intelligence", "Max")
+        Triple("Milo max", "Milo maximum intelligence", "Max")
     )
 
     if (showSecurityDialog) {
@@ -2189,7 +2202,7 @@ fun ModelSelectorDropdown(
                 TextButton(
                     onClick = {
                         if (secretCodeInput.trim() == ChatViewModel.MILO_MAX_UNLOCK_CODE) {
-                            onModelSelected("Milo-max", secretCodeInput.trim())
+                            onModelSelected("Milo max", secretCodeInput.trim())
                             showSecurityDialog = false
                             secretCodeInput = ""
                             codeError = false
@@ -2304,7 +2317,7 @@ fun ModelSelectorDropdown(
                     },
                     onClick = {
                         expanded = false
-                        if (name == "Milo-max") {
+                        if (name == "Milo max") {
                             showSecurityDialog = true
                         } else {
                             onModelSelected(name, "")
@@ -2355,7 +2368,11 @@ fun InputBar(
             )
             Spacer(modifier = Modifier.height(4.dp))
 
-            if (attachedImageUri != null) {
+            androidx.compose.animation.AnimatedVisibility(
+                visible = attachedImageUri != null,
+                enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.expandVertically(),
+                exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.shrinkVertically()
+            ) {
                 Row(
                     modifier = Modifier.padding(bottom = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -2566,7 +2583,7 @@ fun ConversationRowItem(
             text = { Text("Are you sure you want to delete this conversation?", color = colors.textGray) },
             confirmButton = {
                 TextButton(onClick = { 
-                    onDeleteChat(chatToDelete!!)
+                    chatToDelete?.let { onDeleteChat(it) }
                     chatToDelete = null 
                 }) {
                     Text("Delete", color = Color(0xFFFF6B6B))
@@ -2596,7 +2613,7 @@ fun ConversationRowItem(
             confirmButton = {
                 TextButton(onClick = {
                     if (newTitleInput.isNotBlank()) {
-                        onRenameChat(chatToRename!!.id, newTitleInput)
+                        chatToRename?.let { onRenameChat(it.id, newTitleInput) }
                     }
                     chatToRename = null
                 }) {
@@ -2905,7 +2922,7 @@ fun SidebarContent(
                                 confirmButton = {
                                     TextButton(onClick = {
                                         if (renameInput.isNotBlank()) {
-                                            viewModel.renameFolder(folderToRename!!.id, renameInput)
+                                            folderToRename?.let { viewModel.renameFolder(it.id, renameInput) }
                                         }
                                         folderToRename = null
                                     }) {
@@ -2921,7 +2938,7 @@ fun SidebarContent(
                             )
                         }
 
-                        Column(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.fillMaxWidth().animateItem()) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier
@@ -3019,7 +3036,7 @@ fun SidebarContent(
                     // Render Uncategorized Chats
                     val uncategorizedChats = filtered.filter { it.folderId == null }
                     items(uncategorizedChats, key = { it.id }) { item ->
-                        ConversationRowItem(
+                        Box(modifier = Modifier.animateItem()) { ConversationRowItem(
                             item = item,
                             colors = colors,
                             onLoadChat = onLoadChat,
@@ -3028,7 +3045,7 @@ fun SidebarContent(
                             onDeleteChat = onDeleteChat,
                             foldersList = foldersList,
                             onMoveToFolder = { cId, fId -> viewModel.moveConversationToFolder(cId, fId) }
-                        )
+                        ) }
                     }
                 }
             }
